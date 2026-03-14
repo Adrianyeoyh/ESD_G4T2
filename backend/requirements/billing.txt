@@ -1,0 +1,4 @@
+-r base.txt
+pika==1.3.2
+stripe==8.8.0
+marshmallow==3.21.1
