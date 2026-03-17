@@ -3,6 +3,7 @@ from app.config.db import Base
 
 class Invoice(Base):
     __tablename__ = "invoices"
+    __table_args__ = {"schema": "invoice_schema"}
 
     invoice_id = Column(BigInteger, primary_key=True, autoincrement=True)
     record_id = Column(BigInteger, nullable=False, unique=True)

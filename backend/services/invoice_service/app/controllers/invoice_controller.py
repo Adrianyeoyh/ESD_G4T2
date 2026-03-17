@@ -30,3 +30,11 @@ def get_invoice_by_record(record_id):
         "status": invoice.status,
         "retryCount": invoice.retry_count
     }), 200
+    
+def update_invoice_by_record(record_id):
+    invoice = service.get_invoice_by_record(record_id)
+    if not invoice:
+        return jsonify({"message": "Invoice not found"}), 404
+    
+    service
+    return jsonif
