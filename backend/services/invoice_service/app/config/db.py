@@ -1,11 +1,12 @@
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
+from config.settings import DATABASE_URL
 
-DB_URL = os.getenv("DATABASE_URL")
+
 
 engine = create_engine(
-    DB_URL,
+    DATABASE_URL,
     connect_args={"options": "-csearch_path=invoice_schema"}
 )
 
