@@ -1,7 +1,7 @@
 from sqlalchemy import Column, BigInteger, Numeric, Enum, String, Integer, DateTime, func
 from app.config.db import Base
 from shared.types.tools import InvoiceStatus
-from config.settings import DB_SCHEMA
+from app.config.settings import DB_SCHEMA
 
 
 class Invoice(Base):
