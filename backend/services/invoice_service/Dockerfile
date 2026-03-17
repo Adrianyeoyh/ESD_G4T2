@@ -1,10 +1,12 @@
 FROM python:3.12-slim
 
-WORKDIR /app
+WORKDIR /service
 
-COPY shared /app/shared
-COPY services/invoice_service /app/services/invoice_service
+COPY requirements /service/requirements
+COPY services/invoice_service /service
 
-RUN pip install --no-cache-dir -r /app/services/invoice_service/requirements.txt
+RUN pip install --no-cache-dir -r requirements/invoice.txt
 
-CMD ["python", "-m", "services.invoice_service.run"]
+EXPOSE 5000
+
+CMD ["python", "run.py"]

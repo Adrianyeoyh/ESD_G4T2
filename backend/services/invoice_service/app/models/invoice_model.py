@@ -1,7 +1,9 @@
-from sqlalchemy import Column, BigInteger, Numeric, Enum, String, Integer, DateTime, func
+from sqlalchemy import Column, BigInteger, Numeric, Enum, String, Integer, DateTime
 from app.config.db import Base
-from shared.types.tools import InvoiceStatus
+from common.tools import InvoiceStatus
 from app.config.settings import DB_SCHEMA
+from sqlalchemy.dialects.postgresql import ENUM
+from sqlalchemy.sql import func
 
 
 class Invoice(Base):
@@ -11,7 +13,16 @@ class Invoice(Base):
     invoice_id = Column(BigInteger, primary_key=True, autoincrement=True)
     record_id = Column(BigInteger, nullable=False, unique=True)
     total = Column(Numeric(10, 2), nullable=False)
-    status = Column(Enum(InvoiceStatus), nullable=False, default=InvoiceStatus.UNPAID)
+    status = Column(
+        ENUM(
+            InvoiceStatus,
+            name="invoice_status",
+            schema="invoice_schema",
+            create_type=True
+        ),
+        nullable=False,
+        default=InvoiceStatus.UNPAID
+    )
     payment_intent_id = Column(String(255), nullable=True)
     retry_count = Column(Integer, nullable=False, default=0)
     last_payment_error = Column(String, nullable=True)

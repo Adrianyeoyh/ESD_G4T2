@@ -1,8 +1,8 @@
 from sqlalchemy.exc import SQLAlchemyError
 from app.config.db import SessionLocal
 from app.repositories.invoice_repository import InvoiceRepository
-from shared.utils.exceptions import NotFoundError, ConflictError, AppError
-from shared.types.tools import InvoiceStatus
+from utils.exceptions import NotFoundError, ConflictError, AppError
+from common.tools import InvoiceStatus
 
 class InvoiceService:
     def create_invoice(self, record_id: int, total: float):
