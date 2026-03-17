@@ -1,0 +1,21 @@
+version: "3.9"
+
+services:
+  invoice_service:
+    build:
+      context: .
+      dockerfile: services/invoice_service/Dockerfile
+    container_name: invoice_service
+    env_file:
+      - ./services/invoice_service/.env
+    environment:
+      APP_ENV: docker
+    ports:
+      - "5003:5000"
+    restart: unless-stopped
+    networks:
+      - esd-net
+
+networks:
+  esd-net:
+    driver: bridge

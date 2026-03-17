@@ -1,38 +1,38 @@
-from app.config.db import SessionLocal
 from app.models.invoice_model import Invoice
 
 class InvoiceRepository:
+    def __init__(self, db):
+        self.db = db
+
     def create(self, record_id: int, total: float) -> Invoice:
-        db = SessionLocal()
-        try:
-            invoice = Invoice(record_id=record_id, total=total)
-            db.add(invoice)
-            db.commit()
-            db.refresh(invoice)
-            return invoice
-        finally:
-            db.close()
+        invoice = Invoice(record_id=record_id, total=total)
+        self.db.add(invoice)
+        return invoice
 
-    def get_by_id(self, invoice_id: int):
-        db = SessionLocal()
-        try:
-            return db.query(Invoice).filter(Invoice.invoice_id == invoice_id).first()
-        finally:
-            db.close()
+    def get_by_id(self, invoice_id: int) -> Invoice | None:
+        return (
+            self.db.query(Invoice)
+            .filter(Invoice.invoice_id == invoice_id)
+            .first()
+        )
 
-    def get_by_record_id(self, record_id: int):
-        db = SessionLocal()
-        try:
-            return db.query(Invoice).filter(Invoice.record_id == record_id).first()
-        finally:
-            db.close()
+    def get_by_record_id(self, record_id: int) -> Invoice | None:
+        return (
+            self.db.query(Invoice)
+            .filter(Invoice.record_id == record_id)
+            .first()
+        )
 
-    def save(self, invoice: Invoice):
-        db = SessionLocal()
-        try:
-            merged = db.merge(invoice)
-            db.commit()
-            db.refresh(merged)
-            return merged
-        finally:
-            db.close()
+    def list_all(self) -> list[Invoice]:
+        return (
+            self.db.query(Invoice)
+            .order_by(Invoice.created_at.desc())
+            .all()
+        )
+
+    def save(self, invoice: Invoice) -> Invoice:
+        self.db.add(invoice)
+        return invoice
+
+    def delete(self, invoice: Invoice) -> None:
+        self.db.delete(invoice)
