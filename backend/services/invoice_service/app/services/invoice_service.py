@@ -1,6 +1,6 @@
 from sqlalchemy.exc import SQLAlchemyError
 from app.config.db import SessionLocal
-from backend.services.boilerplate_service.app.repositories.boilerplate_repository import InvoiceRepository
+from app.repositories.invoice_repository import InvoiceRepository
 from utils.exceptions import NotFoundError, ConflictError, AppError
 from common.tools import InvoiceStatus
 
