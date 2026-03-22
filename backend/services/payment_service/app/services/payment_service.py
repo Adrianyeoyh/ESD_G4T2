@@ -1,23 +1,46 @@
+from datetime import datetime, timezone
 from sqlalchemy.exc import SQLAlchemyError
 from app.config.db import SessionLocal
-from backend.services.boilerplate_service.app.repositories.boilerplate_repository import InvoiceRepository
+from app.repositories.payment_repository import PaymentRepository
+from app.services import stripe_service
 from utils.exceptions import NotFoundError, ConflictError, AppError
-from common.tools import InvoiceStatus
+from common.tools import PaymentStatus
 
-class InvoiceService:
-    def create_invoice(self, record_id: int, total: float):
+
+class PaymentService:
+
+    def create_payment_attempt(
+        self,
+        invoice_id: int,
+        record_id: int,
+        amount: float,
+        currency: str,
+        description: str | None = None,
+    ):
         db = SessionLocal()
         try:
-            repo = InvoiceRepository(db)
+            repo = PaymentRepository(db)
 
-            existing = repo.get_by_record_id(record_id)
-            if existing:
-                raise ConflictError("Invoice already exists for this record")
+            attempt_number = repo.count_by_invoice_id(invoice_id) + 1
 
-            invoice = repo.create(record_id, total)
+            if description is None:
+                description = f"Invoice #{invoice_id} payment"
+
+            intent = stripe_service.create_payment_intent(amount, currency, description)
+
+            payment = repo.create(
+                invoice_id=invoice_id,
+                record_id=record_id,
+                payment_intent_id=intent.id,
+                client_secret=intent.client_secret,
+                attempt_number=attempt_number,
+                amount=amount,
+                currency=currency,
+            )
+
             db.commit()
-            db.refresh(invoice)
-            return invoice
+            db.refresh(payment)
+            return payment
 
         except AppError:
             db.rollback()
@@ -31,62 +54,56 @@ class InvoiceService:
         finally:
             db.close()
 
-    def get_invoice(self, invoice_id: int):
+    def get_payment(self, payment_id: int):
         db = SessionLocal()
         try:
-            repo = InvoiceRepository(db)
-            invoice = repo.get_by_id(invoice_id)
+            repo = PaymentRepository(db)
+            payment = repo.get_by_id(payment_id)
 
-            if not invoice:
-                raise NotFoundError("Invoice not found")
+            if not payment:
+                raise NotFoundError("Payment not found")
 
-            return invoice
-
+            return payment
         finally:
             db.close()
 
-    def get_invoice_by_record_id(self, record_id: int):
+    def get_latest_payment_by_invoice_id(self, invoice_id: int):
         db = SessionLocal()
         try:
-            repo = InvoiceRepository(db)
-            invoice = repo.get_by_record_id(record_id)
+            repo = PaymentRepository(db)
+            payment = repo.get_latest_by_invoice_id(invoice_id)
 
-            if not invoice:
-                raise NotFoundError("Invoice not found for this record")
+            if not payment:
+                raise NotFoundError("No payment found for this invoice")
 
-            return invoice
-
+            return payment
         finally:
             db.close()
 
-    def list_invoices(self):
+    def list_payments_by_invoice_id(self, invoice_id: int):
         db = SessionLocal()
         try:
-            repo = InvoiceRepository(db)
-            return repo.list_all()
-
+            repo = PaymentRepository(db)
+            return repo.list_by_invoice_id(invoice_id)
         finally:
             db.close()
 
-    def mark_payment_pending(self, invoice_id: int, payment_intent_id: str):
+    def mark_succeeded(self, payment_intent_id: str, paid_at: datetime | None = None):
         db = SessionLocal()
         try:
-            repo = InvoiceRepository(db)
-            invoice = repo.get_by_id(invoice_id)
+            repo = PaymentRepository(db)
+            payment = repo.get_by_payment_intent_id(payment_intent_id)
 
-            if not invoice:
-                raise NotFoundError("Invoice not found")
+            if not payment:
+                raise NotFoundError("Payment not found for this PaymentIntent")
 
-            if invoice.status == InvoiceStatus.PAID:
-                raise ConflictError("Invoice is already paid")
-
-            invoice.status = InvoiceStatus.PAYMENT_PENDING
-            invoice.payment_intent_id = payment_intent_id
-            repo.save(invoice)
+            payment.status = PaymentStatus.SUCCEEDED
+            payment.paid_at = paid_at or datetime.now(timezone.utc)
+            repo.save(payment)
 
             db.commit()
-            db.refresh(invoice)
-            return invoice
+            db.refresh(payment)
+            return payment
 
         except AppError:
             db.rollback()
@@ -100,26 +117,28 @@ class InvoiceService:
         finally:
             db.close()
 
-    def mark_paid(self, invoice_id: int, payment_intent_id: str):
+    def mark_failed(
+        self,
+        payment_intent_id: str,
+        error_code: str | None = None,
+        error_message: str | None = None,
+    ):
         db = SessionLocal()
         try:
-            repo = InvoiceRepository(db)
-            invoice = repo.get_by_id(invoice_id)
+            repo = PaymentRepository(db)
+            payment = repo.get_by_payment_intent_id(payment_intent_id)
 
-            if not invoice:
-                raise NotFoundError("Invoice not found")
+            if not payment:
+                raise NotFoundError("Payment not found for this PaymentIntent")
 
-            if invoice.status == InvoiceStatus.PAID:
-                raise ConflictError("Invoice is already paid")
-
-            invoice.status = InvoiceStatus.PAID
-            invoice.payment_intent_id = payment_intent_id
-            invoice.last_payment_error = None
-            repo.save(invoice)
+            payment.status = PaymentStatus.FAILED
+            payment.error_code = error_code
+            payment.error_message = error_message
+            repo.save(payment)
 
             db.commit()
-            db.refresh(invoice)
-            return invoice
+            db.refresh(payment)
+            return payment
 
         except AppError:
             db.rollback()
@@ -133,116 +152,27 @@ class InvoiceService:
         finally:
             db.close()
 
-    def mark_failed(self, invoice_id: int, error_message: str):
+    def mark_cancelled(self, payment_id: int):
         db = SessionLocal()
         try:
-            repo = InvoiceRepository(db)
-            invoice = repo.get_by_id(invoice_id)
+            repo = PaymentRepository(db)
+            payment = repo.get_by_id(payment_id)
 
-            if not invoice:
-                raise NotFoundError("Invoice not found")
+            if not payment:
+                raise NotFoundError("Payment not found")
 
-            if invoice.status == InvoiceStatus.PAID:
-                raise ConflictError("Cannot mark a paid invoice as failed")
+            if payment.status == PaymentStatus.SUCCEEDED:
+                raise ConflictError("Cannot cancel a succeeded payment")
 
-            invoice.status = InvoiceStatus.FAILED
-            invoice.last_payment_error = error_message
-            repo.save(invoice)
+            stripe_service.cancel_payment_intent(payment.payment_intent_id)
 
-            db.commit()
-            db.refresh(invoice)
-            return invoice
-
-        except AppError:
-            db.rollback()
-            raise
-        except SQLAlchemyError:
-            db.rollback()
-            raise
-        except Exception:
-            db.rollback()
-            raise
-        finally:
-            db.close()
-
-    def increment_retry(self, invoice_id: int, error_message: str | None = None):
-        db = SessionLocal()
-        try:
-            repo = InvoiceRepository(db)
-            invoice = repo.get_by_id(invoice_id)
-
-            if not invoice:
-                raise NotFoundError("Invoice not found")
-
-            if invoice.status == InvoiceStatus.PAID:
-                raise ConflictError("Paid invoice does not need retry")
-
-            invoice.retry_count += 1
-            invoice.status = InvoiceStatus.FAILED
-            invoice.last_payment_error = error_message
-            repo.save(invoice)
+            payment.status = PaymentStatus.CANCELLED
+            payment.cancelled_at = datetime.now(timezone.utc)
+            repo.save(payment)
 
             db.commit()
-            db.refresh(invoice)
-            return invoice
-
-        except AppError:
-            db.rollback()
-            raise
-        except SQLAlchemyError:
-            db.rollback()
-            raise
-        except Exception:
-            db.rollback()
-            raise
-        finally:
-            db.close()
-
-    def update_total(self, invoice_id: int, total: float):
-        db = SessionLocal()
-        try:
-            repo = InvoiceRepository(db)
-            invoice = repo.get_by_id(invoice_id)
-
-            if not invoice:
-                raise NotFoundError("Invoice not found")
-
-            if invoice.status == InvoiceStatus.PAID:
-                raise ConflictError("Cannot update a paid invoice")
-
-            invoice.total = total
-            repo.save(invoice)
-
-            db.commit()
-            db.refresh(invoice)
-            return invoice
-
-        except AppError:
-            db.rollback()
-            raise
-        except SQLAlchemyError:
-            db.rollback()
-            raise
-        except Exception:
-            db.rollback()
-            raise
-        finally:
-            db.close()
-
-    def delete_invoice(self, invoice_id: int):
-        db = SessionLocal()
-        try:
-            repo = InvoiceRepository(db)
-            invoice = repo.get_by_id(invoice_id)
-
-            if not invoice:
-                raise NotFoundError("Invoice not found")
-
-            if invoice.status == InvoiceStatus.PAID:
-                raise ConflictError("Cannot delete a paid invoice")
-
-            repo.delete(invoice)
-            db.commit()
+            db.refresh(payment)
+            return payment
 
         except AppError:
             db.rollback()

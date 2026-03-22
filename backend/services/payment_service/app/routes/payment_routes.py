@@ -1,23 +1,19 @@
 from flask import Blueprint
 
-from backend.services.boilerplate_service.app.controllers.boilerplate_controller import (
-    create_invoice,
-    get_invoice,
-    get_invoice_by_record_id,
-    list_invoices,
-    mark_payment_pending,
-    mark_paid,
-    mark_failed,
-    increment_retry,
-    update_total,
-    delete_invoice,
+from app.controllers.payment_controller import (
+    create_payment_intent,
+    get_payment,
+    list_payments_by_invoice,
+    get_latest_payment_by_invoice,
+    cancel_payment,
+    handle_webhook,
 )
 
 payment_bp = Blueprint("payment_bp", __name__)
 
-
-payment_bp.route("payments/intent", methods=["POST"]) ()
-payment_bp.route("payments/<int:payment_id>", methods=["GET"]) ()
-payment_bp.route("/payments/intent/<payment_intent_id>", methods=["GET"]) ()
-payment_bp.route("/payments/webhook", methods=["POST"]) ()
-payment_bp.route("//payments/retry", methods=["POST"]) ()
+payment_bp.route("/payments/intents", methods=["POST"])(create_payment_intent)
+payment_bp.route("/payments/<int:payment_id>", methods=["GET"])(get_payment)
+payment_bp.route("/payments/invoice/<int:invoice_id>", methods=["GET"])(list_payments_by_invoice)
+payment_bp.route("/payments/invoice/<int:invoice_id>/latest", methods=["GET"])(get_latest_payment_by_invoice)
+payment_bp.route("/payments/<int:payment_id>/cancel", methods=["POST"])(cancel_payment)
+payment_bp.route("/payments/webhook", methods=["POST"])(handle_webhook)
