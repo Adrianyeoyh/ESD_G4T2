@@ -1,3 +1,4 @@
 CREATE SCHEMA IF NOT EXISTS invoice_schema;
 CREATE SCHEMA IF NOT EXISTS records_schema;
 CREATE SCHEMA IF NOT EXISTS patient_schema;
+CREATE SCHEMA IF NOT EXISTS drug_schema
