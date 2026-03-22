@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, Float
-from app.config.db import Base # Assuming your db.py is set up
+from app.config.drug_db import Base 
 
 class Drug(Base):
     __tablename__ = "drug"

@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from app.config.db import get_db # You will need a get_db dependency in your db.py
+from app.config.drug_db import get_db
 from app.schemas.drug_schema import DrugCreate, DrugUpdateQuantity, DrugResponse
 from app.services.drug_service import DrugService
 
 router = APIRouter(prefix="/drug", tags=["Drug Catalogue"])
 
-# FastAPI automatically injects the database session here
+# inject the database session
 @router.post("", response_model=DrugResponse, status_code=201)
 def create_drug(drug_data: DrugCreate, db: Session = Depends(get_db)):
     service = DrugService(db)
