@@ -11,7 +11,22 @@ services:
     environment:
       APP_ENV: docker
     ports:
-      - "5003:5000"
+      - "5003:5003"
+    restart: unless-stopped
+    networks:
+      - esd-net
+
+  payment_service:
+    build:
+      context: .
+      dockerfile: services/payment_service/Dockerfile
+    container_name: payment_service
+    env_file:
+      - ./services/payment_service/.env
+    environment:
+      APP_ENV: docker
+    ports:
+      - "5004:5004"
     restart: unless-stopped
     networks:
       - esd-net
