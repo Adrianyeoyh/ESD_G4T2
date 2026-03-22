@@ -11,7 +11,7 @@ services:
     environment:
       APP_ENV: docker
     ports:
-      - "5003:5000"
+      - "5003:5003"
     restart: unless-stopped
     networks:
       - esd-net
@@ -26,7 +26,7 @@ services:
     environment:
       APP_ENV: docker
     ports:
-      - "5004:5000"
+      - "5004:5004"
     restart: unless-stopped
     networks:
       - esd-net

@@ -7,6 +7,6 @@ COPY services/payment_service /service
 
 RUN pip install --no-cache-dir -r requirements/payment.txt
 
-EXPOSE 5000
+EXPOSE 5004
 
 CMD ["python", "run.py"]
