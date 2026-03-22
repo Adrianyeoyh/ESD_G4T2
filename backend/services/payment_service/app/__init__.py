@@ -6,7 +6,7 @@ from flasgger import Swagger
 def create_app():
     app = Flask(__name__)
     app.config["SWAGGER"] = {
-        "title": "Invoice Service API",
+        "title": "Payment Service API",
         "uiversion": 3
     }
 

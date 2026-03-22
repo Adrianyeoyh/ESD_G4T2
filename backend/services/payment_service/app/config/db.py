@@ -6,7 +6,7 @@ from app.config.settings import DATABASE_URL
 
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"options": "-csearch_path=invoice_schema"}
+    connect_args={"options": "-csearch_path=payment_schema"}
 )
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
