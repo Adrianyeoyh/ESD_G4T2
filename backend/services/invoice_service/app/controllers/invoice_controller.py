@@ -13,9 +13,6 @@ def serialize_invoice(invoice):
         "recordId": invoice.record_id,
         "total": float(invoice.total),
         "status": invoice.status.value,
-        "paymentIntentId": invoice.payment_intent_id,
-        "retryCount": invoice.retry_count,
-        "lastPaymentError": invoice.last_payment_error,
         "createdAt": invoice.created_at.isoformat() if invoice.created_at else None,
         "updatedAt": invoice.updated_at.isoformat() if invoice.updated_at else None,
     }
@@ -90,21 +87,8 @@ def list_invoices():
 
 def mark_payment_pending(invoice_id):
     try:
-        data = request.get_json()
-
-        if not data:
-            raise ValidationError("Request body is required")
-
-        if "paymentIntentId" not in data:
-            raise ValidationError("paymentIntentId is required")
-
-        invoice = service.mark_payment_pending(
-            invoice_id=invoice_id,
-            payment_intent_id=data["paymentIntentId"]
-        )
-
+        invoice = service.mark_payment_pending(invoice_id=invoice_id)
         return jsonify(serialize_invoice(invoice)), 200
-
     except AppError as e:
         return jsonify({"message": e.message}), e.status_code
     except SQLAlchemyError:
@@ -115,21 +99,8 @@ def mark_payment_pending(invoice_id):
 
 def mark_paid(invoice_id):
     try:
-        data = request.get_json()
-
-        if not data:
-            raise ValidationError("Request body is required")
-
-        if "paymentIntentId" not in data:
-            raise ValidationError("paymentIntentId is required")
-
-        invoice = service.mark_paid(
-            invoice_id=invoice_id,
-            payment_intent_id=data["paymentIntentId"]
-        )
-
+        invoice = service.mark_paid(invoice_id=invoice_id)
         return jsonify(serialize_invoice(invoice)), 200
-
     except AppError as e:
         return jsonify({"message": e.message}), e.status_code
     except SQLAlchemyError:
@@ -140,21 +111,20 @@ def mark_paid(invoice_id):
 
 def mark_failed(invoice_id):
     try:
-        data = request.get_json()
-
-        if not data:
-            raise ValidationError("Request body is required")
-
-        if "errorMessage" not in data:
-            raise ValidationError("errorMessage is required")
-
-        invoice = service.mark_failed(
-            invoice_id=invoice_id,
-            error_message=data["errorMessage"]
-        )
-
+        invoice = service.mark_failed(invoice_id=invoice_id)
         return jsonify(serialize_invoice(invoice)), 200
+    except AppError as e:
+        return jsonify({"message": e.message}), e.status_code
+    except SQLAlchemyError:
+        return jsonify({"message": "Database error"}), 500
+    except Exception:
+        return jsonify({"message": "Internal server error"}), 500
 
+
+def mark_cancelled(invoice_id):
+    try:
+        invoice = service.mark_cancelled(invoice_id=invoice_id)
+        return jsonify(serialize_invoice(invoice)), 200
     except AppError as e:
         return jsonify({"message": e.message}), e.status_code
     except SQLAlchemyError:

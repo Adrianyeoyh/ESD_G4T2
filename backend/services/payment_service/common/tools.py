@@ -1,9 +1,9 @@
 # shared ENUMS / pre defined types or interfaces
 import enum
 
-class InvoiceStatus(enum.Enum):
-    UNPAID = "UNPAID"
-    PAYMENT_PENDING = "PAYMENT_PENDING"
-    PAID = "PAID"
+class PaymentStatus(str, Enum):
+    PENDING = "PENDING"
+    REQUIRES_ACTION = "REQUIRES_ACTION"
+    SUCCEEDED = "SUCCEEDED"
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
