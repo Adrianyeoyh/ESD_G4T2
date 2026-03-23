@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from decimal import Decimal
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from app.repositories.payment_repository import PaymentRepository
@@ -16,7 +17,7 @@ class PaymentService:
         self,
         invoice_id: int,
         record_id: int,
-        amount: float,
+        amount: Decimal,
         currency: str,
         description: str | None = None,
     ):

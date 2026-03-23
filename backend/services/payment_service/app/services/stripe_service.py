@@ -1,12 +1,18 @@
 import stripe
+from decimal import Decimal
 from app.config.settings import STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET
 
 stripe.api_key = STRIPE_SECRET_KEY
 
 
-def create_payment_intent(amount_sgd: float, currency: str, description: str) -> stripe.PaymentIntent:
-    """Create a Stripe PaymentIntent. Amount is in SGD (dollars); converted to cents internally."""
-    amount_cents = int(round(amount_sgd * 100))
+def create_payment_intent(amount: Decimal, currency: str, description: str) -> stripe.PaymentIntent:
+    """Create a Stripe PaymentIntent.
+
+    Amount is in major currency units (e.g. SGD dollars).
+    Converted to the smallest unit (cents) using Decimal arithmetic to avoid
+    floating-point precision errors in financial calculations.
+    """
+    amount_cents = int(amount * 100)
     return stripe.PaymentIntent.create(
         amount=amount_cents,
         currency=currency.lower(),

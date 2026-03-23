@@ -2,9 +2,9 @@ services:
   postgres:
     image: postgres:16
     container_name: esd-postgres
+    env_file:
+      - .env.postgres
     environment:
-      POSTGRES_USER: clinic
-      POSTGRES_PASSWORD: clinic
       POSTGRES_DB: esd_db
     ports:
       - "5432:5432"
