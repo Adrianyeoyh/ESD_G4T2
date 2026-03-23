@@ -14,17 +14,17 @@ services:
     networks:
       - esd-net
   drug_service:
-    build:
-      context: .
-      dockerfile: services/drug_catalogue_service/Dockerfile
-    container_name: drug_service
-    ports:
-      - "5001:5001"
-    restart: unless-stopped
-    networks:
-      - esd-net
-    environment:
-      - DATABASE_URL=postgresql://postgres:postgres@esd-postgres:5432/postgres
+      build:
+        context: .
+        dockerfile: services/drug_catalogue_service/Dockerfile
+      container_name: drug_service
+      ports:
+        - "5001:5001"
+      restart: unless-stopped
+      networks:
+        - esd-net
+      environment:
+        - DATABASE_URL=postgresql://clinic:clinic@host.docker.internal:5432/esd_db
 
 networks:
   esd-net:
