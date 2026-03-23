@@ -3,7 +3,6 @@ from sqlalchemy.exc import IntegrityError
 from app.repositories.drug_repository import DrugRepository
 from app.schemas.drug_schema import DrugCreate
 from fastapi import HTTPException
-from utils.exceptions import ValidationError, ConflictError
 
 class DrugService:
     def __init__(self, db: Session):
@@ -13,14 +12,14 @@ class DrugService:
     def list_drugs(self):
         try:
             return self.repo.list_all()
-        except Exception as e:
+        except Exception:
             raise HTTPException(
                 status_code=500,
                 detail="Failed to retrieve drugs from catalogue"
             )
 
     def get_drug(self, drug_id: int):
-        if not isinstance(drug_id, int) or drug_id <= 0:
+        if drug_id <= 0:
             raise HTTPException(
                 status_code=400,
                 detail="Drug ID must be a positive integer"
@@ -56,13 +55,13 @@ class DrugService:
         except HTTPException:
             self.db.rollback()
             raise
-        except IntegrityError as e:
+        except IntegrityError:
             self.db.rollback()
             raise HTTPException(
                 status_code=409,
                 detail="Failed to add drug: database constraint violation"
             )
-        except Exception as e:
+        except Exception:
             self.db.rollback()
             raise HTTPException(
                 status_code=500,
@@ -71,7 +70,7 @@ class DrugService:
 
     def update_quantity(self, drug_id: int, new_quantity: int):
         try:
-            if not isinstance(new_quantity, int) or new_quantity < 0:
+            if new_quantity < 0:
                 raise HTTPException(
                     status_code=400,
                     detail="Quantity must be a non-negative integer"
@@ -86,7 +85,7 @@ class DrugService:
         except HTTPException:
             self.db.rollback()
             raise
-        except Exception as e:
+        except Exception:
             self.db.rollback()
             raise HTTPException(
                 status_code=500,
@@ -101,7 +100,7 @@ class DrugService:
         except HTTPException:
             self.db.rollback()
             raise
-        except Exception as e:
+        except Exception:
             self.db.rollback()
             raise HTTPException(
                 status_code=500,
