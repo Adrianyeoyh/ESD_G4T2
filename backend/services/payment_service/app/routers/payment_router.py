@@ -22,33 +22,33 @@ def create_payment_intent(
     svc: PaymentService = Depends(get_payment_service),
 ):
     payment = svc.create_payment_attempt(
-        invoice_id=body.invoiceId,
-        record_id=body.recordId,
+        invoice_id=body.invoice_id,
+        record_id=body.record_id,
         amount=body.amount,
         currency=body.currency,
         description=body.description,
     )
-    return PaymentResponse.from_orm_model(payment)
+    return PaymentResponse.model_validate(payment)
 
 
 @router.get("/{payment_id}", response_model=PaymentResponse)
 def get_payment(payment_id: int, svc: PaymentService = Depends(get_payment_service)):
-    return PaymentResponse.from_orm_model(svc.get_payment(payment_id))
+    return PaymentResponse.model_validate(svc.get_payment(payment_id))
 
 
 @router.get("/invoice/{invoice_id}", response_model=list[PaymentResponse])
 def list_payments_by_invoice(invoice_id: int, svc: PaymentService = Depends(get_payment_service)):
-    return [PaymentResponse.from_orm_model(p) for p in svc.list_payments_by_invoice_id(invoice_id)]
+    return [PaymentResponse.model_validate(p) for p in svc.list_payments_by_invoice_id(invoice_id)]
 
 
 @router.get("/invoice/{invoice_id}/latest", response_model=PaymentResponse)
 def get_latest_payment_by_invoice(invoice_id: int, svc: PaymentService = Depends(get_payment_service)):
-    return PaymentResponse.from_orm_model(svc.get_latest_payment_by_invoice_id(invoice_id))
+    return PaymentResponse.model_validate(svc.get_latest_payment_by_invoice_id(invoice_id))
 
 
 @router.post("/{payment_id}/cancel", response_model=PaymentResponse)
 def cancel_payment(payment_id: int, svc: PaymentService = Depends(get_payment_service)):
-    return PaymentResponse.from_orm_model(svc.mark_cancelled(payment_id))
+    return PaymentResponse.model_validate(svc.mark_cancelled(payment_id))
 
 
 @router.post("/webhook", status_code=status.HTTP_200_OK)

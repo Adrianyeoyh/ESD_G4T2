@@ -1,53 +1,48 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, field_serializer
+from pydantic.alias_generators import to_camel
 from typing import Optional
 from decimal import Decimal
+from datetime import datetime
 
 
 class PaymentIntentCreate(BaseModel):
-    invoiceId: int
-    recordId: int
+    invoice_id: int
+    record_id: int
     amount: Decimal
     currency: str
     description: Optional[str] = None
 
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
 
 class PaymentResponse(BaseModel):
-    paymentId: int
-    invoiceId: int
-    recordId: int
+    payment_id: int
+    invoice_id: int
+    record_id: int
     provider: str
-    paymentIntentId: str
-    clientSecret: Optional[str] = None
-    attemptNumber: int
+    payment_intent_id: str
+    client_secret: Optional[str] = None
+    attempt_number: int
     status: str
     amount: Decimal
     currency: str
-    errorCode: Optional[str] = None
-    errorMessage: Optional[str] = None
-    paidAt: Optional[str] = None
-    cancelledAt: Optional[str] = None
-    createdAt: Optional[str] = None
-    updatedAt: Optional[str] = None
+    error_code: Optional[str] = None
+    error_message: Optional[str] = None
+    paid_at: Optional[datetime] = None
+    cancelled_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        from_attributes=True,
+    )
 
-    @classmethod
-    def from_orm_model(cls, obj):
-        return cls(
-            paymentId=obj.payment_id,
-            invoiceId=obj.invoice_id,
-            recordId=obj.record_id,
-            provider=obj.provider,
-            paymentIntentId=obj.payment_intent_id,
-            clientSecret=obj.client_secret,
-            attemptNumber=obj.attempt_number,
-            status=obj.status.value,
-            amount=obj.amount,
-            currency=obj.currency,
-            errorCode=obj.error_code,
-            errorMessage=obj.error_message,
-            paidAt=obj.paid_at.isoformat() if obj.paid_at else None,
-            cancelledAt=obj.cancelled_at.isoformat() if obj.cancelled_at else None,
-            createdAt=obj.created_at.isoformat() if obj.created_at else None,
-            updatedAt=obj.updated_at.isoformat() if obj.updated_at else None,
-        )
+    @field_serializer("status")
+    def serialize_status(self, v) -> str:
+        return v.value if hasattr(v, "value") else v
+
+    @field_serializer("paid_at", "cancelled_at", "created_at", "updated_at")
+    def serialize_datetime(self, v: Optional[datetime]) -> Optional[str]:
+        return v.isoformat() if v else None

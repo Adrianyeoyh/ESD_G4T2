@@ -1,33 +1,41 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, field_serializer
+from pydantic.alias_generators import to_camel
 from typing import Optional
+from decimal import Decimal
+from datetime import datetime
 
 
 class InvoiceCreate(BaseModel):
-    recordId: int
-    total: float
+    record_id: int
+    total: Decimal
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
 
 class InvoiceUpdateTotal(BaseModel):
-    total: float
+    total: Decimal
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
 
 class InvoiceResponse(BaseModel):
-    invoiceId: int
-    recordId: int
-    total: float
+    invoice_id: int
+    record_id: int
+    total: Decimal
     status: str
-    createdAt: Optional[str] = None
-    updatedAt: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        from_attributes=True,   # replaces orm_mode
+    )
 
-    @classmethod
-    def from_orm_model(cls, obj):
-        return cls(
-            invoiceId=obj.invoice_id,
-            recordId=obj.record_id,
-            total=float(obj.total),
-            status=obj.status.value,
-            createdAt=obj.created_at.isoformat() if obj.created_at else None,
-            updatedAt=obj.updated_at.isoformat() if obj.updated_at else None,
-        )
+    @field_serializer("status")
+    def serialize_status(self, v) -> str:
+        return v.value if hasattr(v, "value") else v
+
+    @field_serializer("created_at", "updated_at")
+    def serialize_datetime(self, v: Optional[datetime]) -> Optional[str]:
+        return v.isoformat() if v else None
