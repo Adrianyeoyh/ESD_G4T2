@@ -2,7 +2,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from app.repositories.drug_repository import DrugRepository
 from app.schemas.drug_schema import DrugCreate
-from fastapi import HTTPException
+from utils.exceptions import AppError, ConflictError, NotFoundError, ValidationError
 
 class DrugService:
     def __init__(self, db: Session):
@@ -13,24 +13,15 @@ class DrugService:
         try:
             return self.repo.list_all()
         except Exception:
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to retrieve drugs from catalogue"
-            )
+            raise AppError("Failed to retrieve drugs from catalogue")
 
     def get_drug(self, drug_id: int):
         if drug_id <= 0:
-            raise HTTPException(
-                status_code=400,
-                detail="Drug ID must be a positive integer"
-            )
+            raise ValidationError("Drug ID must be a positive integer")
         
         drug = self.repo.get_by_id(drug_id)
         if not drug:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Drug with ID {drug_id} not found in catalogue"
-            )
+            raise NotFoundError(f"Drug with ID {drug_id} not found in catalogue")
         return drug
 
     def add_drug(self, drug_data: DrugCreate):
@@ -38,9 +29,8 @@ class DrugService:
             # Check for duplicate drug name (case-insensitive)
             existing_drug = self.repo.get_by_name(drug_data.drug_name)
             if existing_drug:
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"Drug with name '{drug_data.drug_name}' already exists in catalogue"
+                raise ConflictError(
+                    f"Drug with name '{drug_data.drug_name}' already exists in catalogue"
                 )
             
             # Create the drug
@@ -52,29 +42,20 @@ class DrugService:
             self.db.commit()
             self.db.refresh(drug)
             return drug
-        except HTTPException:
+        except AppError:
             self.db.rollback()
             raise
         except IntegrityError:
             self.db.rollback()
-            raise HTTPException(
-                status_code=409,
-                detail="Failed to add drug: database constraint violation"
-            )
+            raise ConflictError("Failed to add drug: database constraint violation")
         except Exception:
             self.db.rollback()
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to add drug to catalogue"
-            )
+            raise AppError("Failed to add drug to catalogue")
 
     def update_quantity(self, drug_id: int, new_quantity: int):
         try:
             if new_quantity < 0:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Quantity must be a non-negative integer"
-                )
+                raise ValidationError("Quantity must be a non-negative integer")
             
             drug = self.get_drug(drug_id)
             drug.quantity = new_quantity
@@ -82,27 +63,21 @@ class DrugService:
             self.db.commit()
             self.db.refresh(drug)
             return drug
-        except HTTPException:
+        except AppError:
             self.db.rollback()
             raise
         except Exception:
             self.db.rollback()
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to update drug quantity"
-            )
+            raise AppError("Failed to update drug quantity")
 
     def delete_drug(self, drug_id: int):
         try:
             drug = self.get_drug(drug_id)
             self.repo.delete(drug)
             self.db.commit()
-        except HTTPException:
+        except AppError:
             self.db.rollback()
             raise
         except Exception:
             self.db.rollback()
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to delete drug from catalogue"
-            )
+            raise AppError("Failed to delete drug from catalogue")
