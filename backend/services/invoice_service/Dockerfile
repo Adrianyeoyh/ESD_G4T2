@@ -9,4 +9,4 @@ RUN pip install --no-cache-dir -r requirements/invoice.txt
 
 EXPOSE 5003
 
-CMD ["python", "run.py"]
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "5003"]

@@ -1,10 +1,9 @@
-Flask
-Werkzeug
+fastapi
+uvicorn[standard]
+pydantic
 python-dotenv
 SQLAlchemy
 psycopg2-binary
 requests
-gunicorn
 pytest
 pytest-mock
-flasgger

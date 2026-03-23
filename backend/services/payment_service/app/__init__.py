@@ -1,17 +1,48 @@
-from flask import Flask
-from app.routes.payment_routes import payment_bp
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+import stripe
+
+from app.routers.payment_router import router as payment_router
 from app.config.db import Base, engine
-from flasgger import Swagger
+from utils.exceptions import AppError
 
 
-def create_app():
-    app = Flask(__name__)
-    app.config["SWAGGER"] = {
-        "title": "Payment Service API",
-        "uiversion": 3
-    }
+def create_app() -> FastAPI:
+    app = FastAPI(
+        title="Payment Service API",
+        version="1.0.0",
+        description="Atomic microservice for payments and Stripe integration",
+    )
 
-    Swagger(app)
-    app.register_blueprint(payment_bp)
+    # ── Global exception handlers ───────────────────────────────────────────
+    @app.exception_handler(AppError)
+    async def app_error_handler(request: Request, exc: AppError):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"success": False, "data": None, "error": exc.message},
+        )
+
+    @app.exception_handler(stripe.error.SignatureVerificationError)
+    async def stripe_signature_handler(request: Request, exc: stripe.error.SignatureVerificationError):
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "data": None, "error": "Invalid Stripe signature"},
+        )
+
+    @app.exception_handler(Exception)
+    async def generic_error_handler(request: Request, exc: Exception):
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "data": None, "error": "Internal server error"},
+        )
+
+    # ── Router registration ─────────────────────────────────────────────────
+    app.include_router(payment_router)
+
+    # ── Ensure DB tables exist ──────────────────────────────────────────────
     Base.metadata.create_all(bind=engine)
+
     return app
+
+
+app = create_app()
