@@ -1,11 +1,12 @@
 from pydantic import BaseModel
 from typing import Optional
+from decimal import Decimal
 
 
 class PaymentIntentCreate(BaseModel):
     invoiceId: int
     recordId: int
-    amount: float
+    amount: Decimal
     currency: str
     description: Optional[str] = None
 
