@@ -17,11 +17,26 @@ app = FastAPI(
 def check_constraint_exists(conn, constraint_name: str) -> bool:
     """Check if a constraint already exists on the drug table"""
     try:
-        result = conn.execute(text(f"""
+        stmt = text("""
             SELECT constraint_name FROM information_schema.table_constraints
             WHERE table_schema = 'drug_schema' AND table_name = 'drug'
-            AND constraint_name = '{constraint_name}'
-        """))
+            AND constraint_name = :constraint_name
+        """)
+        result = conn.execute(stmt, {"constraint_name": constraint_name})
+        return result.fetchone() is not None
+    except Exception:
+        return False
+
+
+def check_index_exists(conn, index_name: str) -> bool:
+    """Check if an index already exists"""
+    try:
+        stmt = text("""
+            SELECT indexname FROM pg_indexes
+            WHERE schemaname = 'drug_schema' AND tablename = 'drug'
+            AND indexname = :index_name
+        """)
+        result = conn.execute(stmt, {"index_name": index_name})
         return result.fetchone() is not None
     except Exception:
         return False
@@ -67,6 +82,15 @@ def apply_migrations(conn) -> None:
         """))
     except Exception:
         pass
+    
+    # Add case-insensitive index on drug_name if it doesn't exist
+    if not check_index_exists(conn, "ix_drug_name_ci"):
+        try:
+            conn.execute(text("""
+                CREATE INDEX ix_drug_name_ci ON drug_schema.drug (LOWER("drugName"))
+            """))
+        except Exception:
+            pass
 
 
 @app.on_event("startup")
