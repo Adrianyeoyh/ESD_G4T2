@@ -6,13 +6,13 @@ class DrugRepository:
         self.db = db
 
     def get_by_id(self, drug_id: int) -> Drug | None:
-        return self.db.query(Drug).filter(Drug.drugId == drug_id).first()
+        return self.db.query(Drug).filter(Drug.drug_id == drug_id).first()
 
     def list_all(self) -> list[Drug]:
         return self.db.query(Drug).all()
 
-    def create(self, drugName: str, quantity: int, price: float) -> Drug:
-        new_drug = Drug(drugName=drugName, quantity=quantity, price=price)
+    def create(self, drug_name: str, quantity: int, price: float) -> Drug:
+        new_drug = Drug(drug_name=drug_name, quantity=quantity, price=price)
         self.db.add(new_drug)
         return new_drug
     

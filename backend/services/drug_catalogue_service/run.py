@@ -1,11 +1,11 @@
 import uvicorn
 from fastapi import FastAPI
 from sqlalchemy import text
-from app.controllers.drug_controller import router
+from app.routes.drug_routes import router
 from app.config.drug_db import Base, engine
 
 # Ensure model metadata is registered before create_all runs.
-from app.models.drug_model import Drug  # noqa: F401
+from app.models.drug_model import Drug 
 
 # Initialize FastAPI
 app = FastAPI(

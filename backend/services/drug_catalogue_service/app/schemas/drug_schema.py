@@ -1,7 +1,9 @@
-from pydantic import BaseModel
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 class DrugCreate(BaseModel):
-    drugName: str
+    model_config = ConfigDict(populate_by_name=True)
+
+    drug_name: str = Field(validation_alias=AliasChoices("drug_name", "drugName"))
     quantity: int
     price: float
 
@@ -9,8 +11,8 @@ class DrugUpdateQuantity(BaseModel):
     quantity: int
 
 class DrugResponse(BaseModel):
-    drugId: int
-    drugName: str
+    drug_id: int
+    drug_name: str
     quantity: int
     price: float
 

@@ -1,14 +1,11 @@
-import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
+from app.config.settings import DATABASE_URL, DB_SCHEMA
 
-# Grab URL from the docker-compose environment variable
-DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/postgres")
-
-# use drug schema
+# use drug schema in settings.py
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"options": "-csearch_path=drug_schema"}
+    connect_args={"options": f"-csearch_path={DB_SCHEMA}"}
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
