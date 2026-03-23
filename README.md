@@ -51,7 +51,7 @@ docker ps
 You should see a container named `esd-postgres` with a port mapping like:
 
 ```text
-0.0.0.0:5433->5432/tcp
+0.0.0.0:5432->5432/tcp
 ```
 
 You can also check the logs:
@@ -70,14 +70,17 @@ database system is ready to accept connections
 If running the Flask microservice **locally on your machine** rather than inside Docker, use:
 
 ```env
-DATABASE_URL=postgresql+psycopg2://esd_user:esd_pass@localhost:5433/esd_db
+DATABASE_URL=postgresql+psycopg2://<POSTGRES_USER>:<POSTGRES_PASSWORD>@localhost:5432/esd_db
 ```
+
+Replace `<POSTGRES_USER>` and `<POSTGRES_PASSWORD>` with credentials from your local
+environment (for example, your shell exports or a local `.env` file).
 
 ## Connect to the database manually
 To open a Postgres shell inside the container:
 
 ```bash
-docker exec -it esd-postgres psql -U esd_user -d esd_db
+docker exec -it esd-postgres psql -U <POSTGRES_USER> -d esd_db
 ```
 
 Inside `psql`, list schemas with:
