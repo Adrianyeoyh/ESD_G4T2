@@ -18,13 +18,15 @@ services:
         context: .
         dockerfile: services/drug_catalogue_service/Dockerfile
       container_name: drug_service
+      env_file:
+      - ./services/drug_catalogue_service/.env
+      environment:
+        APP_ENV: docker
       ports:
-        - "5001:5001"
+      - "5001:5001"
       restart: unless-stopped
       networks:
-        - esd-net
-      environment:
-        - DATABASE_URL=postgresql://clinic:clinic@host.docker.internal:5432/esd_db
+      - esd-net
 
 networks:
   esd-net:

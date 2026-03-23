@@ -5,7 +5,11 @@ from fastapi import HTTPException
 
 class DrugService:
     def __init__(self, db: Session):
+        self.db = db
         self.repo = DrugRepository(db)
+
+    def list_drugs(self):
+        return self.repo.list_all()
 
     def get_drug(self, drug_id: int):
         drug = self.repo.get_by_id(drug_id)
@@ -14,22 +18,20 @@ class DrugService:
         return drug
 
     def add_drug(self, drug_data: DrugCreate):
-        # Business logic: Maybe check if drug already exists before adding?
-        # For now, just create it.
-        drug = self.repo.create(drug_data.drugName, drug_data.quantity, drug_data.price)
-        self.repo.db.commit()
-        self.repo.db.refresh(drug)
+        drug = self.repo.create(drug_data.drug_name, drug_data.quantity, drug_data.price)
+        self.db.commit()
+        self.db.refresh(drug)
         return drug
 
     def update_quantity(self, drug_id: int, new_quantity: int):
-        drug = self.get_drug(drug_id) # Reuse the method above to check if it exists!
+        drug = self.get_drug(drug_id) # will raise 404 if drug not found
         drug.quantity = new_quantity
         self.repo.save(drug)
-        self.repo.db.commit()
-        self.repo.db.refresh(drug)
+        self.db.commit()
+        self.db.refresh(drug)
         return drug
 
     def delete_drug(self, drug_id: int):
         drug = self.get_drug(drug_id)
         self.repo.delete(drug)
-        self.repo.db.commit()
+        self.db.commit()
