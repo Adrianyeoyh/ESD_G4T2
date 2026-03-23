@@ -8,6 +8,12 @@ class DrugRepository:
     def get_by_id(self, drug_id: int) -> Drug | None:
         return self.db.query(Drug).filter(Drug.drug_id == drug_id).first()
 
+    def get_by_name(self, drug_name: str) -> Drug | None:
+        """Get a drug by its name (case-insensitive)"""
+        return self.db.query(Drug).filter(
+            Drug.drug_name.ilike(drug_name)
+        ).first()
+
     def list_all(self) -> list[Drug]:
         return self.db.query(Drug).all()
 
