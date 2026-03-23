@@ -1,2 +1,2 @@
 -r base.txt
-marshmallow
+marshmallow==3.26.1
