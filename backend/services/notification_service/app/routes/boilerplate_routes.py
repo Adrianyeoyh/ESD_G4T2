@@ -1,6 +1,6 @@
 from flask import Blueprint
 
-from app.controllers.invoice_controller import (
+from backend.services.boilerplate_service.app.controllers.boilerplate_controller import (
     create_invoice,
     get_invoice,
     get_invoice_by_record_id,

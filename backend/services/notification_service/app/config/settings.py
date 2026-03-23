@@ -6,8 +6,7 @@ load_dotenv()
 APP_ENV = os.getenv("APP_ENV", "local")
 
 if APP_ENV == "docker":
-    DB_HOST = "postgres"  # compose service name — services share esd-net
-        # DB_HOST = "host.docker.internal"
+    DB_HOST = "host.docker.internal"
 else:
     DB_HOST = "localhost"
 

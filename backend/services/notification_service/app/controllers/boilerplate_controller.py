@@ -1,7 +1,7 @@
 from flask import request, jsonify
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.services.invoice_service import InvoiceService
+from backend.services.boilerplate_service.app.services.boilerplate_service import InvoiceService
 from utils.exceptions import AppError, ValidationError
 
 service = InvoiceService()
