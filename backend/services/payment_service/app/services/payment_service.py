@@ -185,3 +185,40 @@ class PaymentService:
             raise
         finally:
             db.close()
+
+    def mark_cancelled_by_webhook(self, payment_intent_id: str):
+        """DB-only cancel — used by the Stripe webhook handler.
+
+        Stripe has already cancelled the PaymentIntent by the time this webhook
+        fires, so we must NOT call stripe_service.cancel_payment_intent again.
+        """
+        db = SessionLocal()
+        try:
+            repo = PaymentRepository(db)
+            payment = repo.get_by_payment_intent_id(payment_intent_id)
+
+            if not payment:
+                raise NotFoundError("Payment not found for this PaymentIntent")
+
+            if payment.status == PaymentStatus.SUCCEEDED:
+                raise ConflictError("Cannot cancel a succeeded payment")
+
+            payment.status = PaymentStatus.CANCELLED
+            payment.cancelled_at = datetime.now(timezone.utc)
+            repo.save(payment)
+
+            db.commit()
+            db.refresh(payment)
+            return payment
+
+        except AppError:
+            db.rollback()
+            raise
+        except SQLAlchemyError:
+            db.rollback()
+            raise
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()

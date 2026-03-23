@@ -60,30 +60,16 @@ def handle_webhook_event(payload: bytes, sig_header: str) -> None:
         )
 
     elif event_type == "payment_intent.canceled":
-        # Look up the payment by payment_intent_id to get the payment_id for mark_cancelled
-        from app.config.db import SessionLocal
-        from app.repositories.payment_repository import PaymentRepository
-        db = SessionLocal()
-        try:
-            repo = PaymentRepository(db)
-            payment_row = repo.get_by_payment_intent_id(payment_intent_id)
-        finally:
-            db.close()
-
-        if payment_row:
-            payment = _payment_service.mark_cancelled(payment_id=payment_row.payment_id)
-            billing_client.notify_payment_cancelled(
-                payment_id=payment.payment_id,
-                invoice_id=payment.invoice_id,
-                record_id=payment.record_id,
-                payment_intent_id=payment.payment_intent_id,
-                attempt_number=payment.attempt_number,
-            )
-        else:
-            logger.warning(
-                "webhook_service: received payment_intent.canceled for unknown pi=%s",
-                payment_intent_id,
-            )
+        payment = _payment_service.mark_cancelled_by_webhook(
+            payment_intent_id=payment_intent_id,
+        )
+        billing_client.notify_payment_cancelled(
+            payment_id=payment.payment_id,
+            invoice_id=payment.invoice_id,
+            record_id=payment.record_id,
+            payment_intent_id=payment.payment_intent_id,
+            attempt_number=payment.attempt_number,
+        )
 
     else:
         logger.info("webhook_service: ignoring unhandled event type %s", event_type)
