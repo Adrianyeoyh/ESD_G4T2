@@ -14,18 +14,18 @@ services:
     networks:
       - esd-net
   drug_service:
-      build:
-        context: .
-        dockerfile: services/drug_catalogue_service/Dockerfile
-      container_name: drug_service
-      env_file:
+    build:
+      context: .
+      dockerfile: services/drug_catalogue_service/Dockerfile
+    container_name: drug_service
+    env_file:
       - ./services/drug_catalogue_service/.env
-      environment:
-        APP_ENV: docker
-      ports:
+    environment:
+      APP_ENV: docker
+    ports:
       - "5001:5001"
-      restart: unless-stopped
-      networks:
+    restart: unless-stopped
+    networks:
       - esd-net
 
 networks:

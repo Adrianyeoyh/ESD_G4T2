@@ -43,10 +43,8 @@ class DrugUpdateQuantity(BaseModel):
         return v
 
 class DrugResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     drug_id: int
     drug_name: str
     quantity: int
     price: float
-
-    class Config:
-        from_attributes = True
