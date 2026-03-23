@@ -1,15 +1,17 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from app.routers.invoice_router import router as invoice_router
+import stripe
+
+from app.routers.payment_router import router as payment_router
 # from app.config.db import Base, engine
 from utils.exceptions import AppError
 
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="Invoice Service API",
+        title="Payment Service API",
         version="1.0.0",
-        description="Atomic microservice for invoice management",
+        description="Atomic microservice for payments and Stripe integration",
     )
 
     # ── Global exception handlers ───────────────────────────────────────────
@@ -20,6 +22,13 @@ def create_app() -> FastAPI:
             content={"success": False, "data": None, "error": exc.message},
         )
 
+    @app.exception_handler(stripe.error.SignatureVerificationError)
+    async def stripe_signature_handler(request: Request, exc: stripe.error.SignatureVerificationError):
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "data": None, "error": "Invalid Stripe signature"},
+        )
+
     @app.exception_handler(Exception)
     async def generic_error_handler(request: Request, exc: Exception):
         return JSONResponse(
@@ -28,7 +37,7 @@ def create_app() -> FastAPI:
         )
 
     # ── Router registration ─────────────────────────────────────────────────
-    app.include_router(invoice_router)
+    app.include_router(payment_router)
 
     # ── DB schema management ────────────────────────────────────────────────
     # Do NOT use create_all in production — use Alembic or init.sql instead.
