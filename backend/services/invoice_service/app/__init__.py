@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from app.routers.invoice_router import router as invoice_router
-from app.config.db import Base, engine
+# from app.config.db import Base, engine
 from utils.exceptions import AppError
 
 
@@ -30,8 +30,9 @@ def create_app() -> FastAPI:
     # ── Router registration ─────────────────────────────────────────────────
     app.include_router(invoice_router)
 
-    # ── Ensure DB tables exist ──────────────────────────────────────────────
-    Base.metadata.create_all(bind=engine)
+    # ── DB schema management ────────────────────────────────────────────────
+    # Do NOT use create_all in production — use Alembic or init.sql instead.
+    # Base.metadata.create_all(bind=engine)
 
     return app
 

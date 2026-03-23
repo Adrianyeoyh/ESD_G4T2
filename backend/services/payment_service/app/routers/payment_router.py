@@ -1,6 +1,5 @@
 from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.orm import Session
-import stripe
 
 from app.config.db import get_db
 from app.schemas.payment_schema import PaymentIntentCreate, PaymentResponse
@@ -10,9 +9,18 @@ from app.services import webhook_service
 router = APIRouter(prefix="/payments", tags=["Payments"])
 
 
+# ── Service dependency ──────────────────────────────────────────────────────
+def get_payment_service(db: Session = Depends(get_db)) -> PaymentService:
+    return PaymentService(db)
+
+
+# ── Routes ──────────────────────────────────────────────────────────────────
+
 @router.post("/intents", response_model=PaymentResponse, status_code=status.HTTP_201_CREATED)
-def create_payment_intent(body: PaymentIntentCreate, db: Session = Depends(get_db)):
-    svc = PaymentService(db)
+def create_payment_intent(
+    body: PaymentIntentCreate,
+    svc: PaymentService = Depends(get_payment_service),
+):
     payment = svc.create_payment_attempt(
         invoice_id=body.invoiceId,
         record_id=body.recordId,
@@ -24,26 +32,22 @@ def create_payment_intent(body: PaymentIntentCreate, db: Session = Depends(get_d
 
 
 @router.get("/{payment_id}", response_model=PaymentResponse)
-def get_payment(payment_id: int, db: Session = Depends(get_db)):
-    svc = PaymentService(db)
+def get_payment(payment_id: int, svc: PaymentService = Depends(get_payment_service)):
     return PaymentResponse.from_orm_model(svc.get_payment(payment_id))
 
 
 @router.get("/invoice/{invoice_id}", response_model=list[PaymentResponse])
-def list_payments_by_invoice(invoice_id: int, db: Session = Depends(get_db)):
-    svc = PaymentService(db)
+def list_payments_by_invoice(invoice_id: int, svc: PaymentService = Depends(get_payment_service)):
     return [PaymentResponse.from_orm_model(p) for p in svc.list_payments_by_invoice_id(invoice_id)]
 
 
 @router.get("/invoice/{invoice_id}/latest", response_model=PaymentResponse)
-def get_latest_payment_by_invoice(invoice_id: int, db: Session = Depends(get_db)):
-    svc = PaymentService(db)
+def get_latest_payment_by_invoice(invoice_id: int, svc: PaymentService = Depends(get_payment_service)):
     return PaymentResponse.from_orm_model(svc.get_latest_payment_by_invoice_id(invoice_id))
 
 
 @router.post("/{payment_id}/cancel", response_model=PaymentResponse)
-def cancel_payment(payment_id: int, db: Session = Depends(get_db)):
-    svc = PaymentService(db)
+def cancel_payment(payment_id: int, svc: PaymentService = Depends(get_payment_service)):
     return PaymentResponse.from_orm_model(svc.mark_cancelled(payment_id))
 
 

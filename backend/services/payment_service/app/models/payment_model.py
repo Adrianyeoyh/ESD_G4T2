@@ -24,7 +24,7 @@ class Payment(Base):
         ENUM(
             PaymentStatus,
             name="payment_status",
-            schema="payment_schema",
+            schema=DB_SCHEMA,
             create_type=True
         ),
         nullable=False,

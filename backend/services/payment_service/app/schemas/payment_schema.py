@@ -20,7 +20,7 @@ class PaymentResponse(BaseModel):
     clientSecret: Optional[str] = None
     attemptNumber: int
     status: str
-    amount: float
+    amount: Decimal
     currency: str
     errorCode: Optional[str] = None
     errorMessage: Optional[str] = None
@@ -42,7 +42,7 @@ class PaymentResponse(BaseModel):
             clientSecret=obj.client_secret,
             attemptNumber=obj.attempt_number,
             status=obj.status.value,
-            amount=float(obj.amount),
+            amount=obj.amount,
             currency=obj.currency,
             errorCode=obj.error_code,
             errorMessage=obj.error_message,

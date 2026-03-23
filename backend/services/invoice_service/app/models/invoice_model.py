@@ -18,7 +18,7 @@ class Invoice(Base):
         ENUM(
             InvoiceStatus,
             name="invoice_status",
-            schema="invoice_schema",
+            schema=DB_SCHEMA,
             create_type=True
         ),
         nullable=False,
