@@ -1,113 +1,184 @@
+import re
+import logging
+
 import uvicorn
 from fastapi import FastAPI
 from sqlalchemy import text
-from app.routes.drug_routes import router
+from sqlalchemy.exc import SQLAlchemyError
+
 from app.config.drug_db import Base, engine
+from app.config.settings import DB_SCHEMA
+from app.routes.drug_routes import router
 
 # Ensure model metadata is registered before create_all runs.
-from app.models.drug_model import Drug 
+from app.models.drug_model import Drug
+
+
+logger = logging.getLogger(__name__)
+
+
+def _validated_schema_name() -> str:
+    """Validate schema identifier before using it in DDL."""
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", DB_SCHEMA):
+        raise RuntimeError(f"Invalid DB_SCHEMA value: {DB_SCHEMA!r}")
+    return DB_SCHEMA
+
+
+SCHEMA_NAME = _validated_schema_name()
+TABLE_NAME = "drug"
+
 
 # Initialize FastAPI
 app = FastAPI(
     title="Drug Catalogue Service",
-    description="Atomic microservice for managing drug inventory"
+    description="Atomic microservice for managing drug inventory",
 )
 
 
 def check_constraint_exists(conn, constraint_name: str) -> bool:
-    """Check if a constraint already exists on the drug table"""
-    try:
-        stmt = text("""
-            SELECT constraint_name FROM information_schema.table_constraints
-            WHERE table_schema = 'drug_schema' AND table_name = 'drug'
-            AND constraint_name = :constraint_name
-        """)
-        result = conn.execute(stmt, {"constraint_name": constraint_name})
-        return result.fetchone() is not None
-    except Exception:
-        return False
+    """Check if a constraint already exists on the drug table."""
+    stmt = text(
+        """
+        SELECT constraint_name
+        FROM information_schema.table_constraints
+        WHERE table_schema = :schema_name
+          AND table_name = :table_name
+          AND constraint_name = :constraint_name
+        """
+    )
+    result = conn.execute(
+        stmt,
+        {
+            "schema_name": SCHEMA_NAME,
+            "table_name": TABLE_NAME,
+            "constraint_name": constraint_name,
+        },
+    )
+    return result.fetchone() is not None
 
 
 def check_index_exists(conn, index_name: str) -> bool:
-    """Check if an index already exists"""
-    try:
-        stmt = text("""
-            SELECT indexname FROM pg_indexes
-            WHERE schemaname = 'drug_schema' AND tablename = 'drug'
-            AND indexname = :index_name
-        """)
-        result = conn.execute(stmt, {"index_name": index_name})
-        return result.fetchone() is not None
-    except Exception:
-        return False
+    """Check if an index already exists on the drug table."""
+    stmt = text(
+        """
+        SELECT indexname
+        FROM pg_indexes
+        WHERE schemaname = :schema_name
+          AND tablename = :table_name
+          AND indexname = :index_name
+        """
+    )
+    result = conn.execute(
+        stmt,
+        {
+            "schema_name": SCHEMA_NAME,
+            "table_name": TABLE_NAME,
+            "index_name": index_name,
+        },
+    )
+    return result.fetchone() is not None
 
 
 def apply_migrations(conn) -> None:
-    """Apply database schema migrations"""
-    # Add unique constraint on drug_name if it doesn't exist
+    """Apply database schema migrations."""
+    table_ref = f'"{SCHEMA_NAME}"."{TABLE_NAME}"'
+
     if not check_constraint_exists(conn, "uq_drug_name"):
         try:
-            conn.execute(text("""
-                ALTER TABLE drug_schema.drug
-                ADD CONSTRAINT uq_drug_name UNIQUE ("drugName")
-            """))
-        except Exception:
-            pass
-    
-    # Add check constraint for quantity if it doesn't exist
+            conn.execute(
+                text(
+                    f"""
+                    ALTER TABLE {table_ref}
+                    ADD CONSTRAINT uq_drug_name UNIQUE ("drugName")
+                    """
+                )
+            )
+        except SQLAlchemyError as exc:
+            # Ignore duplicate-object race if another instance created it first.
+            if check_constraint_exists(conn, "uq_drug_name"):
+                logger.info("Constraint uq_drug_name already exists; skipping")
+            else:
+                logger.exception("Failed applying uq_drug_name migration")
+                raise
+
     if not check_constraint_exists(conn, "ck_quantity_non_negative"):
         try:
-            conn.execute(text("""
-                ALTER TABLE drug_schema.drug
-                ADD CONSTRAINT ck_quantity_non_negative CHECK (quantity >= 0)
-            """))
-        except Exception:
-            pass
-    
-    # Add check constraint for price if it doesn't exist
+            conn.execute(
+                text(
+                    f"""
+                    ALTER TABLE {table_ref}
+                    ADD CONSTRAINT ck_quantity_non_negative CHECK (quantity >= 0)
+                    """
+                )
+            )
+        except SQLAlchemyError:
+            if check_constraint_exists(conn, "ck_quantity_non_negative"):
+                logger.info("Constraint ck_quantity_non_negative already exists; skipping")
+            else:
+                logger.exception("Failed applying ck_quantity_non_negative migration")
+                raise
+
     if not check_constraint_exists(conn, "ck_price_positive"):
         try:
-            conn.execute(text("""
-                ALTER TABLE drug_schema.drug
-                ADD CONSTRAINT ck_price_positive CHECK (price > 0)
-            """))
-        except Exception:
-            pass
-    
-    # Modify drug_name column to limit length to 255
+            conn.execute(
+                text(
+                    f"""
+                    ALTER TABLE {table_ref}
+                    ADD CONSTRAINT ck_price_positive CHECK (price > 0)
+                    """
+                )
+            )
+        except SQLAlchemyError:
+            if check_constraint_exists(conn, "ck_price_positive"):
+                logger.info("Constraint ck_price_positive already exists; skipping")
+            else:
+                logger.exception("Failed applying ck_price_positive migration")
+                raise
+
     try:
-        conn.execute(text("""
-            ALTER TABLE drug_schema.drug
-            ALTER COLUMN "drugName" TYPE VARCHAR(255)
-        """))
-    except Exception:
-        pass
-    
-    # Add case-insensitive index on drug_name if it doesn't exist
+        conn.execute(
+            text(
+                f"""
+                ALTER TABLE {table_ref}
+                ALTER COLUMN "drugName" TYPE VARCHAR(255)
+                """
+            )
+        )
+    except SQLAlchemyError:
+        logger.exception("Failed applying drugName column migration")
+        raise
+
     if not check_index_exists(conn, "ix_drug_name_ci"):
         try:
-            conn.execute(text("""
-                CREATE INDEX ix_drug_name_ci ON drug_schema.drug (LOWER("drugName"))
-            """))
-        except Exception:
-            pass
+            conn.execute(
+                text(
+                    f"""
+                    CREATE INDEX ix_drug_name_ci
+                    ON {table_ref} (LOWER("drugName"))
+                    """
+                )
+            )
+        except SQLAlchemyError:
+            if check_index_exists(conn, "ix_drug_name_ci"):
+                logger.info("Index ix_drug_name_ci already exists; skipping")
+            else:
+                logger.exception("Failed applying ix_drug_name_ci migration")
+                raise
 
 
 @app.on_event("startup")
 def init_db() -> None:
-    # Create schema first when using an external DB that may not be pre-initialized.
     with engine.begin() as conn:
-        conn.execute(text("CREATE SCHEMA IF NOT EXISTS drug_schema"))
-    
-    # Create tables if they don't exist
+        conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{SCHEMA_NAME}"'))
+
     Base.metadata.create_all(bind=engine)
-    
-    # Apply any pending migrations
+
     with engine.begin() as conn:
         apply_migrations(conn)
 
 
 app.include_router(router)
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=5001)
