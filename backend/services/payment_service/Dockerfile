@@ -9,4 +9,4 @@ RUN pip install --no-cache-dir -r requirements/payment.txt
 
 EXPOSE 5004
 
-CMD ["python", "run.py"]
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "5004"]
