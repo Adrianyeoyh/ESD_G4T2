@@ -1,122 +1,258 @@
-# ESD_G4T2
+# ESD_G4T2 — Backend Setup Guide
 
+This guide covers how to get the full backend running locally using **Docker Compose**. All services (Postgres, Invoice Service, Payment Service) are orchestrated together.
 
-# Backend README
+---
 
-## Starting the local PostgreSQL database
+## Prerequisites
 
-This backend uses a **local Dockerized PostgreSQL database** for development.
+| Tool | Purpose |
+|---|---|
+| [Docker Desktop](https://www.docker.com/products/docker-desktop/) | Run all containers |
+| Git | Clone the repo |
 
-### Prerequisites
-- Docker Desktop installed
-- Docker Desktop running
+Make sure **Docker Desktop is running** before proceeding.
 
-### Start the database
-From the project root, run:
+---
 
-```bash
-./backend/scripts/start-db.sh
+## Directory Structure
+
+```
+backend/
+├── docker-compose.yml           # Orchestrates all services
+├── .env.postgres                # PostgreSQL credentials (you create this)
+├── .env.postgres.example        # Template for above
+├── db/                          # SQL init scripts (run on first DB boot)
+├── services/
+│   ├── invoice_service/
+│   │   ├── .env                 # Invoice service env vars (you create this)
+│   │   └── .env.example         # Template for above
+│   └── payment_service/
+│       ├── .env                 # Payment service env vars (you create this)
+│       └── .env.example         # Template for above
 ```
 
-This script starts a PostgreSQL container named `esd-postgres`.
+---
 
-Current local setup:
-- **Host port:** `5432`
-- **Container port:** `5432`
-- **Database name:** `esd_db`
-- **Username:** `clinic`
-- **Password:** `clinic`
+## Step 1 — Set Up Environment Variables
 
-### What the script does
-The script:
-1. removes any old `esd-postgres` container with the same name
-2. starts a new PostgreSQL container
-3. mounts the persistent Docker volume for database storage
-4. mounts `backend/db/init.sql` into `/docker-entrypoint-initdb.d/init.sql`
+The backend uses `.env` files that are **not committed to Git**. You need to create them from the provided `.example` templates.
 
-On the **first startup of a fresh database volume**, PostgreSQL will automatically run `init.sql` to create the required schemas, such as:
-- `patient_schema`
-- `records_schema`
-- `drug_schema`
-- `prescription_schema`
-- `invoice_schema`
+### 1a. PostgreSQL credentials
 
-## Verify that the database is running
-Run:
+```bash
+cp backend/.env.postgres.example backend/.env.postgres
+```
+
+Then open `backend/.env.postgres` and fill in your values:
+
+```env
+POSTGRES_USER=your_db_user
+POSTGRES_PASSWORD=your_db_password
+```
+
+> **Note:** These credentials are used both by the Postgres container and referenced by the individual services. Keep them consistent.
+
+---
+
+### 1b. Invoice Service
+
+```bash
+cp backend/services/invoice_service/.env.example backend/services/invoice_service/.env
+```
+
+Open `backend/services/invoice_service/.env`:
+
+```env
+APP_ENV=docker          # Use 'docker' when running via Docker Compose, 'local' for local dev
+DB_HOST=postgres        # Must match the service name in docker-compose.yml
+DB_PORT=5432
+DB_USER=your_db_user    # Same as POSTGRES_USER in .env.postgres
+DB_PASSWORD=your_db_password  # Same as POSTGRES_PASSWORD in .env.postgres
+DB_NAME=esd_db
+DB_SCHEMA=invoice_schema
+```
+
+> **`APP_ENV` values explained:**
+> - `docker` — service is running inside Docker Compose; uses container networking (e.g. `DB_HOST=postgres`)
+> - `local` — service is running on your machine directly; `DB_HOST` should be `localhost`
+
+---
+
+### 1c. Payment Service
+
+```bash
+cp backend/services/payment_service/.env.example backend/services/payment_service/.env
+```
+
+Open `backend/services/payment_service/.env`:
+
+```env
+APP_ENV=docker
+DB_HOST=postgres
+DB_PORT=5432
+DB_USER=your_db_user
+DB_PASSWORD=your_db_password
+DB_NAME=esd_db
+DB_SCHEMA=payment_schema
+
+STRIPE_SECRET_KEY=sk_test_...          # Your Stripe secret key (from Stripe Dashboard)
+STRIPE_WEBHOOK_SECRET=whsec_...        # Your Stripe webhook signing secret
+BILLING_SERVICE_URL=http://localhost:5005  # URL for billing service (adjust if needed)
+```
+
+> **Getting Stripe keys:**
+> 1. Go to [https://dashboard.stripe.com/test/apikeys](https://dashboard.stripe.com/test/apikeys)
+> 2. Copy the **Secret key** (`sk_test_...`) into `STRIPE_SECRET_KEY`
+> 3. For webhooks, go to **Developers → Webhooks** and grab the signing secret (`whsec_...`) into `STRIPE_WEBHOOK_SECRET`
+
+---
+
+## Step 2 — Build and Start All Services
+
+From the **`backend/`** directory:
+
+```bash
+cd backend
+docker compose up --build
+```
+
+This will:
+1. Pull the `postgres:16` image and start the database
+2. Wait for Postgres to pass its healthcheck before starting services
+3. Build and start `invoice_service` (port **5003**)
+4. Build and start `payment_service` (port **5004**)
+
+On the **first startup ever**, Postgres will automatically run all `.sql` files in `backend/db/` to initialize schemas (`invoice_schema`, `payment_schema`, etc.).
+
+---
+
+## Step 3 — Verify Everything Is Running
 
 ```bash
 docker ps
 ```
 
-You should see a container named `esd-postgres` with a port mapping like:
+You should see three containers:
 
-```text
-0.0.0.0:5433->5432/tcp
+```
+CONTAINER ID   NAME               PORTS
+...            esd-postgres       0.0.0.0:5432->5432/tcp
+...            invoice_service    0.0.0.0:5003->5003/tcp
+...            payment_service    0.0.0.0:5004->5004/tcp
 ```
 
-You can also check the logs:
+Check logs for a specific service:
 
 ```bash
-docker logs esd-postgres
+docker compose logs invoice_service
+docker compose logs payment_service
+docker compose logs postgres
 ```
 
-A healthy startup will include a message similar to:
+---
 
-```text
-database system is ready to accept connections
-```
+## Service Endpoints
 
-## Database connection string
-If running the Flask microservice **locally on your machine** rather than inside Docker, use:
+| Service | Port | Base URL |
+|---|---|---|
+| Invoice Service | 5003 | `http://localhost:5003` |
+| Payment Service | 5004 | `http://localhost:5004` |
 
-```env
-DATABASE_URL=postgresql+psycopg2://esd_user:esd_pass@localhost:5433/esd_db
-```
+---
 
-## Connect to the database manually
-To open a Postgres shell inside the container:
+## Stopping the Stack
 
 ```bash
-docker exec -it esd-postgres psql -U esd_user -d esd_db
+docker compose down
 ```
 
-Inside `psql`, list schemas with:
+To also delete the database volume (⚠️ destroys all data):
+
+```bash
+docker compose down -v
+```
+
+---
+
+## Rebuilding After Code Changes
+
+If you change service code or dependencies:
+
+```bash
+docker compose up --build
+```
+
+---
+
+## Connecting to the Database Manually
+
+```bash
+docker exec -it esd-postgres psql -U your_db_user -d esd_db
+```
+
+Inside `psql`:
 
 ```sql
+-- List all schemas
 \dn
-```
 
-Exit with:
+-- Switch to invoice schema
+SET search_path TO invoice_schema;
 
-```sql
+-- List tables
+\dt
+
+-- Exit
 \q
 ```
 
-## Stop the database
-To stop only this database container:
+---
+
+## Recreating the Database from Scratch
+
+If you need a completely fresh database (re-runs `init.sql`):
 
 ```bash
-docker stop esd-postgres
+docker compose down -v
+docker compose up --build
 ```
 
-To start it again later:
+> **Why `-v`?** The SQL init scripts in `backend/db/` only run when PostgreSQL initializes a **brand new** volume. Removing the volume forces a fresh init.
 
-```bash
-docker start esd-postgres
-```
+---
 
-## Recreate the database from scratch
-If you need a completely fresh database:
+## Running Services Locally (Without Docker Compose)
 
-```bash
-docker rm -f esd-postgres
-docker volume rm esd_pgdata
-./backend/scripts/start-db.sh
-```
+If you prefer to run a service directly on your machine during development:
 
-This will delete all existing local database data in the `esd_pgdata` volume.
+1. Start **only** the database container:
+   ```bash
+   docker compose up postgres
+   ```
 
-## Notes
-- `init.sql` only runs automatically when PostgreSQL initializes a **fresh** data directory.
-- If the volume already exists, PostgreSQL will not rerun `init.sql` automatically.
-- If you change schema setup later, either run SQL manually or recreate the volume.
+2. In the service's `.env`, set:
+   ```env
+   APP_ENV=local
+   DB_HOST=localhost
+   DB_PORT=5432
+   ```
+
+3. Install dependencies and run:
+   ```bash
+   cd backend/services/invoice_service
+   pip install -r ../../requirements/invoice.txt
+   python run.py
+   ```
+
+---
+
+## Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| `connection refused` on DB | Make sure Postgres healthcheck passed — wait a few seconds and retry |
+| Service can't reach `postgres` host | Ensure `APP_ENV=docker` and `DB_HOST=postgres` in `.env` |
+| `STRIPE_SECRET_KEY` missing error | Fill in Stripe keys in `payment_service/.env` |
+| Schema not created | Run `docker compose down -v && docker compose up --build` to reset DB |
+| Port already in use | Stop any local conflicting processes on ports 5432, 5003, or 5004 |
