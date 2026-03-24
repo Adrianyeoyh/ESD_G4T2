@@ -1,11 +1,14 @@
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
+from decimal import Decimal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic.alias_generators import to_camel
 
 class DrugCreate(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
-    drug_name: str = Field(validation_alias=AliasChoices("drug_name", "drugName"), min_length=1)
+    drug_name: str = Field(min_length=1)
     quantity: int
-    price: float
+    price: Decimal
 
     @field_validator('drug_name')
     @classmethod
@@ -25,10 +28,10 @@ class DrugCreate(BaseModel):
 
     @field_validator('price')
     @classmethod
-    def validate_price(cls, v: float) -> float:
+    def validate_price(cls, v: Decimal) -> Decimal:
         if v <= 0:
             raise ValueError('Price must be greater than 0')
-        if v > 999999.99:
+        if v > Decimal('999999.99'):
             raise ValueError('Price cannot exceed 999999.99')
         return v
 
@@ -43,8 +46,8 @@ class DrugUpdateQuantity(BaseModel):
         return v
 
 class DrugResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, from_attributes=True)
     drug_id: int
     drug_name: str
     quantity: int
-    price: float
+    price: Decimal

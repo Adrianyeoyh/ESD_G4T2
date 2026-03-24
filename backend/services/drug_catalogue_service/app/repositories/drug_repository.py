@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.models.drug_model import Drug
@@ -18,7 +20,7 @@ class DrugRepository:
     def list_all(self) -> list[Drug]:
         return self.db.query(Drug).all()
 
-    def create(self, drug_name: str, quantity: int, price: float) -> Drug:
+    def create(self, drug_name: str, quantity: int, price: Decimal) -> Drug:
         new_drug = Drug(drug_name=drug_name, quantity=quantity, price=price)
         self.db.add(new_drug)
         return new_drug
