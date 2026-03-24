@@ -1,8 +1,7 @@
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
 from app.repositories.drug_repository import DrugRepository
 from app.schemas.drug_schema import DrugCreate
-from utils.exceptions import AppError, ConflictError, NotFoundError, ValidationError
+from utils.exceptions import ConflictError, NotFoundError, ValidationError
 
 class DrugService:
     def __init__(self, db: Session):
@@ -10,10 +9,7 @@ class DrugService:
         self.repo = DrugRepository(db)
 
     def list_drugs(self):
-        try:
-            return self.repo.list_all()
-        except Exception:
-            raise AppError("Failed to retrieve drugs from catalogue")
+        return self.repo.list_all()
 
     def get_drug(self, drug_id: int):
         if drug_id <= 0:
@@ -25,59 +21,34 @@ class DrugService:
         return drug
 
     def add_drug(self, drug_data: DrugCreate):
-        try:
-            # Check for duplicate drug name (case-insensitive)
-            existing_drug = self.repo.get_by_name(drug_data.drug_name)
-            if existing_drug:
-                raise ConflictError(
-                    f"Drug with name '{drug_data.drug_name}' already exists in catalogue"
-                )
-            
-            # Create the drug
-            drug = self.repo.create(
-                drug_data.drug_name,
-                drug_data.quantity,
-                drug_data.price
+        # Check for duplicate drug name (case-insensitive)
+        existing_drug = self.repo.get_by_name(drug_data.drug_name)
+        if existing_drug:
+            raise ConflictError(
+                f"Drug with name '{drug_data.drug_name}' already exists in catalogue"
             )
-            self.db.commit()
-            self.db.refresh(drug)
-            return drug
-        except AppError:
-            self.db.rollback()
-            raise
-        except IntegrityError:
-            self.db.rollback()
-            raise ConflictError("Failed to add drug: database constraint violation")
-        except Exception:
-            self.db.rollback()
-            raise AppError("Failed to add drug to catalogue")
+
+        drug = self.repo.create(
+            drug_data.drug_name,
+            drug_data.quantity,
+            drug_data.price
+        )
+        self.db.commit()
+        self.db.refresh(drug)
+        return drug
 
     def update_quantity(self, drug_id: int, new_quantity: int):
-        try:
-            if new_quantity < 0:
-                raise ValidationError("Quantity must be a non-negative integer")
-            
-            drug = self.get_drug(drug_id)
-            drug.quantity = new_quantity
-            self.repo.save(drug)
-            self.db.commit()
-            self.db.refresh(drug)
-            return drug
-        except AppError:
-            self.db.rollback()
-            raise
-        except Exception:
-            self.db.rollback()
-            raise AppError("Failed to update drug quantity")
+        if new_quantity < 0:
+            raise ValidationError("Quantity must be a non-negative integer")
+
+        drug = self.get_drug(drug_id)
+        drug.quantity = new_quantity
+        self.repo.save(drug)
+        self.db.commit()
+        self.db.refresh(drug)
+        return drug
 
     def delete_drug(self, drug_id: int):
-        try:
-            drug = self.get_drug(drug_id)
-            self.repo.delete(drug)
-            self.db.commit()
-        except AppError:
-            self.db.rollback()
-            raise
-        except Exception:
-            self.db.rollback()
-            raise AppError("Failed to delete drug from catalogue")
+        drug = self.get_drug(drug_id)
+        self.repo.delete(drug)
+        self.db.commit()
