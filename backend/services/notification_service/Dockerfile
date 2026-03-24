@@ -5,7 +5,7 @@ WORKDIR /service
 COPY requirements /service/requirements
 COPY services/boilerplate_service /service
 
-RUN pip install --no-cache-dir -r requirements/boilerplate.txt
+RUN pip install --no-cache-dir -r requirements/notification.txt
 
 EXPOSE 5000
 
