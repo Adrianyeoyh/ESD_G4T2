@@ -1,7 +1,8 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from app.routers.invoice_router import router as invoice_router
-# from app.config.db import Base, engine
+from app.config.db import Base, engine
+from app.models import invoice_model  # noqa: F401 — registers model on Base
 from utils.exceptions import AppError
 
 
@@ -31,8 +32,8 @@ def create_app() -> FastAPI:
     app.include_router(invoice_router)
 
     # ── DB schema management ────────────────────────────────────────────────
-    # Do NOT use create_all in production — use Alembic or init.sql instead.
-    # Base.metadata.create_all(bind=engine)
+    # Safe for dev: create_all is idempotent (skips existing tables).
+    Base.metadata.create_all(bind=engine)
 
     return app
 

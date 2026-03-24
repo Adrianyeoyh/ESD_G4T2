@@ -6,6 +6,8 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from app.routers.drug_router import router as drug_router
+from app.config.drug_db import Base, engine
+from app.models import drug_model  # noqa: F401 — registers model on Base
 from utils.exceptions import AppError
 
 def create_app() -> FastAPI:
@@ -33,8 +35,8 @@ def create_app() -> FastAPI:
     app.include_router(drug_router)
 
     # ── DB schema management ────────────────────────────────────────────────
-    # Do NOT use create_all in production — use Alembic or init.sql instead.
-    # Base.metadata.create_all(bind=engine)
+    # Safe for dev: create_all is idempotent (skips existing tables).
+    Base.metadata.create_all(bind=engine)
 
     return app
 

@@ -5,9 +5,11 @@ load_dotenv()
 
 APP_ENV = os.getenv("APP_ENV", "local")
 
-default_host = "host.docker.internal" if APP_ENV == "docker" else "localhost"
-
-DB_HOST = os.getenv("DB_HOST", default_host)
+if APP_ENV == "docker":
+    DB_HOST = "postgres"  # compose service name — services share esd-net
+else:
+    DB_HOST = "localhost"
+    
 DB_PORT = os.getenv("DB_PORT", "5432")
 DB_USER = os.getenv("DB_USER", "clinic")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "clinic")
