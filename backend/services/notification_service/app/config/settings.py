@@ -6,14 +6,16 @@ load_dotenv()
 APP_ENV = os.getenv("APP_ENV", "local")
 
 if APP_ENV == "docker":
-    DB_HOST = "host.docker.internal"
+    RABBITMQ_HOST = "rabbitmq"
 else:
-    DB_HOST = "localhost"
+    RABBITMQ_HOST = "localhost"
 
-DB_PORT = os.getenv("DB_PORT")
-DB_USER = os.getenv("DB_USER")
-DB_PASSWORD = os.getenv("DB_PASSWORD")
-DB_NAME = os.getenv("DB_NAME")
-DB_SCHEMA = os.getenv("DB_SCHEMA", "invoice_schema")
+RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "localhost")
+RABBITMQ_PORT = int(os.getenv("RABBITMQ_PORT", "5672"))
+RABBITMQ_USER = os.getenv("RABBITMQ_USER", "guest")
+RABBITMQ_PASS = os.getenv("RABBITMQ_PASS", "guest")
+RABBITMQ_QUEUE = os.getenv("RABBITMQ_QUEUE", "notification.payment.success")
 
-DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
+TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")

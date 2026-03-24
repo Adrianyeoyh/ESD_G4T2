@@ -7,6 +7,6 @@ COPY services/boilerplate_service /service
 
 RUN pip install --no-cache-dir -r requirements/boilerplate.txt
 
-EXPOSE 5000
+EXPOSE 5100
 
 CMD ["python", "run.py"]
