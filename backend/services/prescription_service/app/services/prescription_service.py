@@ -51,7 +51,7 @@ class PrescriptionService:
     def update_prescription(self, prescription_id: int, update_data: PrescriptionUpdate):
         prescription = self.get_prescription(prescription_id)
 
-        if not update_data.quantity and not update_data.dosage:
+        if update_data.quantity is None and update_data.dosage is None:
             raise ValidationError("At least one field (quantity or dosage) must be provided for update")
 
         self.repo.update(
