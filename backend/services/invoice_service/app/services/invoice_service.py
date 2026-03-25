@@ -49,10 +49,6 @@ class InvoiceService:
 
     def mark_paid(self, invoice_id: int):
         invoice = self.get_invoice(invoice_id)
-
-        if invoice.status == InvoiceStatus.PAID:
-            raise ConflictError("Invoice is already paid")
-
         invoice.status = InvoiceStatus.PAID
         self.repo.save(invoice)
         self.db.commit()
@@ -61,10 +57,6 @@ class InvoiceService:
 
     def mark_failed(self, invoice_id: int):
         invoice = self.get_invoice(invoice_id)
-
-        if invoice.status == InvoiceStatus.PAID:
-            raise ConflictError("Cannot mark a paid invoice as failed")
-
         invoice.status = InvoiceStatus.FAILED
         self.repo.save(invoice)
         self.db.commit()
@@ -73,23 +65,15 @@ class InvoiceService:
 
     def mark_cancelled(self, invoice_id: int):
         invoice = self.get_invoice(invoice_id)
-
-        if invoice.status == InvoiceStatus.PAID:
-            raise ConflictError("Cannot cancel a paid invoice")
-
         invoice.status = InvoiceStatus.CANCELLED
         self.repo.save(invoice)
         self.db.commit()
         self.db.refresh(invoice)
         return invoice
 
-    def update_total(self, invoice_id: int, total: float):
+    def update_total(self, invoice_id: int, new_total: float):
         invoice = self.get_invoice(invoice_id)
-
-        if invoice.status == InvoiceStatus.PAID:
-            raise ConflictError("Cannot update a paid invoice")
-
-        invoice.total = total
+        invoice.total = new_total
         self.repo.save(invoice)
         self.db.commit()
         self.db.refresh(invoice)

@@ -1,220 +1,80 @@
-from flask import request, jsonify
-from sqlalchemy.exc import SQLAlchemyError
+from flask import jsonify, request
 
-from backend.services.boilerplate_service.app.services.boilerplate_service import InvoiceService
+from app.services.boilerplate_service import ExternalResponseError, MakePaymentService, OrchestrationError
 from utils.exceptions import AppError, ValidationError
 
-service = InvoiceService()
+service = MakePaymentService()
 
 
-def serialize_invoice(invoice):
-    return {
-        "invoiceId": invoice.invoice_id,
-        "recordId": invoice.record_id,
-        "total": float(invoice.total),
-        "status": invoice.status.value,
-        "paymentIntentId": invoice.payment_intent_id,
-        "retryCount": invoice.retry_count,
-        "lastPaymentError": invoice.last_payment_error,
-        "createdAt": invoice.created_at.isoformat() if invoice.created_at else None,
-        "updatedAt": invoice.updated_at.isoformat() if invoice.updated_at else None,
-    }
+def _success(data: dict, status: int = 200):
+    return jsonify({"success": True, "data": data, "error": None}), status
 
 
-def create_invoice():
-    try:
-        data = request.get_json()
+def initiate_payment():
+    body = request.get_json(silent=True) or {}
+    invoice_id = body.get("invoiceId")
+    if not invoice_id:
+        raise ValidationError("invoiceId is required")
 
-        if not data:
-            raise ValidationError("Request body is required")
-
-        if "recordId" not in data:
-            raise ValidationError("recordId is required")
-
-        if "total" not in data:
-            raise ValidationError("total is required")
-
-        invoice = service.create_invoice(
-            record_id=data["recordId"],
-            total=data["total"]
-        )
-
-        return jsonify(serialize_invoice(invoice)), 201
-
-    except AppError as e:
-        return jsonify({"message": e.message}), e.status_code
-    except SQLAlchemyError:
-        return jsonify({"message": "Database error"}), 500
-    except Exception:
-        return jsonify({"message": "Internal server error"}), 500
+    currency = body.get("currency")
+    description = body.get("description")
+    result = service.initiate_payment(invoice_id=invoice_id, currency=currency, description=description)
+    return _success(result, 201)
 
 
-def get_invoice(invoice_id):
-    try:
-        invoice = service.get_invoice(invoice_id)
-        return jsonify(serialize_invoice(invoice)), 200
+def retry_payment():
+    body = request.get_json(silent=True) or {}
+    invoice_id = body.get("invoiceId")
+    if not invoice_id:
+        raise ValidationError("invoiceId is required")
 
-    except AppError as e:
-        return jsonify({"message": e.message}), e.status_code
-    except SQLAlchemyError:
-        return jsonify({"message": "Database error"}), 500
-    except Exception:
-        return jsonify({"message": "Internal server error"}), 500
-
-
-def get_invoice_by_record_id(record_id):
-    try:
-        invoice = service.get_invoice_by_record_id(record_id)
-        return jsonify(serialize_invoice(invoice)), 200
-
-    except AppError as e:
-        return jsonify({"message": e.message}), e.status_code
-    except SQLAlchemyError:
-        return jsonify({"message": "Database error"}), 500
-    except Exception:
-        return jsonify({"message": "Internal server error"}), 500
+    currency = body.get("currency")
+    description = body.get("description")
+    result = service.retry_payment(invoice_id=invoice_id, currency=currency, description=description)
+    return _success(result, 201)
 
 
-def list_invoices():
-    try:
-        invoices = service.list_invoices()
-        return jsonify([serialize_invoice(invoice) for invoice in invoices]), 200
-
-    except AppError as e:
-        return jsonify({"message": e.message}), e.status_code
-    except SQLAlchemyError:
-        return jsonify({"message": "Database error"}), 500
-    except Exception:
-        return jsonify({"message": "Internal server error"}), 500
+def handle_payment_event():
+    body = request.get_json(silent=True) or {}
+    result = service.handle_payment_event(body)
+    return _success(result, 200)
 
 
-def mark_payment_pending(invoice_id):
-    try:
-        data = request.get_json()
+def register_error_handlers(app):
+    @app.errorhandler(ValidationError)
+    def handle_validation_error(exc):
+        return jsonify({"success": False, "data": None, "error": exc.message, "errorCode": "VALIDATION_ERROR"}), 400
 
-        if not data:
-            raise ValidationError("Request body is required")
+    @app.errorhandler(OrchestrationError)
+    def handle_orchestration_error(exc):
+        payload = {
+            "success": False,
+            "data": None,
+            "error": exc.message,
+            "errorCode": exc.error_code,
+        }
+        payload.update(exc.extra)
+        return jsonify(payload), exc.status_code
 
-        if "paymentIntentId" not in data:
-            raise ValidationError("paymentIntentId is required")
+    @app.errorhandler(ExternalResponseError)
+    def handle_external_error(exc):
+        return jsonify(
+            {
+                "success": False,
+                "data": None,
+                "error": "Unexpected dependency response",
+                "errorCode": "DEPENDENCY_ERROR",
+                "dependencyStatus": exc.status_code,
+                "dependencyPayload": exc.payload,
+            }
+        ), 502
 
-        invoice = service.mark_payment_pending(
-            invoice_id=invoice_id,
-            payment_intent_id=data["paymentIntentId"]
-        )
+    @app.errorhandler(AppError)
+    def handle_app_error(exc):
+        return jsonify({"success": False, "data": None, "error": exc.message, "errorCode": "APP_ERROR"}), exc.status_code
 
-        return jsonify(serialize_invoice(invoice)), 200
-
-    except AppError as e:
-        return jsonify({"message": e.message}), e.status_code
-    except SQLAlchemyError:
-        return jsonify({"message": "Database error"}), 500
-    except Exception:
-        return jsonify({"message": "Internal server error"}), 500
-
-
-def mark_paid(invoice_id):
-    try:
-        data = request.get_json()
-
-        if not data:
-            raise ValidationError("Request body is required")
-
-        if "paymentIntentId" not in data:
-            raise ValidationError("paymentIntentId is required")
-
-        invoice = service.mark_paid(
-            invoice_id=invoice_id,
-            payment_intent_id=data["paymentIntentId"]
-        )
-
-        return jsonify(serialize_invoice(invoice)), 200
-
-    except AppError as e:
-        return jsonify({"message": e.message}), e.status_code
-    except SQLAlchemyError:
-        return jsonify({"message": "Database error"}), 500
-    except Exception:
-        return jsonify({"message": "Internal server error"}), 500
-
-
-def mark_failed(invoice_id):
-    try:
-        data = request.get_json()
-
-        if not data:
-            raise ValidationError("Request body is required")
-
-        if "errorMessage" not in data:
-            raise ValidationError("errorMessage is required")
-
-        invoice = service.mark_failed(
-            invoice_id=invoice_id,
-            error_message=data["errorMessage"]
-        )
-
-        return jsonify(serialize_invoice(invoice)), 200
-
-    except AppError as e:
-        return jsonify({"message": e.message}), e.status_code
-    except SQLAlchemyError:
-        return jsonify({"message": "Database error"}), 500
-    except Exception:
-        return jsonify({"message": "Internal server error"}), 500
-
-
-def increment_retry(invoice_id):
-    try:
-        data = request.get_json(silent=True) or {}
-
-        invoice = service.increment_retry(
-            invoice_id=invoice_id,
-            error_message=data.get("errorMessage")
-        )
-
-        return jsonify(serialize_invoice(invoice)), 200
-
-    except AppError as e:
-        return jsonify({"message": e.message}), e.status_code
-    except SQLAlchemyError:
-        return jsonify({"message": "Database error"}), 500
-    except Exception:
-        return jsonify({"message": "Internal server error"}), 500
-
-
-def update_total(invoice_id):
-    try:
-        data = request.get_json()
-
-        if not data:
-            raise ValidationError("Request body is required")
-
-        if "total" not in data:
-            raise ValidationError("total is required")
-
-        invoice = service.update_total(
-            invoice_id=invoice_id,
-            total=data["total"]
-        )
-
-        return jsonify(serialize_invoice(invoice)), 200
-
-    except AppError as e:
-        return jsonify({"message": e.message}), e.status_code
-    except SQLAlchemyError:
-        return jsonify({"message": "Database error"}), 500
-    except Exception:
-        return jsonify({"message": "Internal server error"}), 500
-
-
-def delete_invoice(invoice_id):
-    try:
-        service.delete_invoice(invoice_id)
-        return jsonify({"message": "Invoice deleted successfully"}), 200
-
-    except AppError as e:
-        return jsonify({"message": e.message}), e.status_code
-    except SQLAlchemyError:
-        return jsonify({"message": "Database error"}), 500
-    except Exception:
-        return jsonify({"message": "Internal server error"}), 500
+    @app.errorhandler(Exception)
+    def handle_generic_error(_exc):
+        return jsonify(
+            {"success": False, "data": None, "error": "Internal server error", "errorCode": "INTERNAL_SERVER_ERROR"}
+        ), 500

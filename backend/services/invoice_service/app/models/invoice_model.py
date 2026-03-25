@@ -22,7 +22,7 @@ class Invoice(Base):
             create_type=True
         ),
         nullable=False,
-        default=InvoiceStatus.UNPAID
+        default=InvoiceStatus.DRAFT
     )
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())

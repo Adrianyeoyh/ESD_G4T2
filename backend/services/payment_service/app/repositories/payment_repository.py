@@ -1,4 +1,5 @@
 from app.models.payment_model import Payment
+from sqlalchemy import func, select, text
 
 
 class PaymentRepository:
@@ -65,6 +66,20 @@ class PaymentRepository:
             .filter(Payment.invoice_id == invoice_id)
             .count()
         )
+
+    def get_next_attempt_number_for_update(self, invoice_id: int) -> int:
+        # Acquire a per-invoice transaction advisory lock so concurrent retries for
+        # the same invoice cannot generate duplicate attempt numbers.
+        self.db.execute(
+            text("SELECT pg_advisory_xact_lock(:lock_key)"),
+            {"lock_key": int(invoice_id)},
+        )
+
+        max_attempt = self.db.execute(
+            select(func.max(Payment.attempt_number)).where(Payment.invoice_id == invoice_id)
+        ).scalar_one_or_none()
+
+        return (max_attempt or 0) + 1
 
     def save(self, payment: Payment) -> Payment:
         self.db.add(payment)
