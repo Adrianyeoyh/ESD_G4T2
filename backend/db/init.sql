@@ -3,6 +3,7 @@ CREATE SCHEMA IF NOT EXISTS payment_schema;
 CREATE SCHEMA IF NOT EXISTS records_schema;
 CREATE SCHEMA IF NOT EXISTS patient_schema;
 CREATE SCHEMA IF NOT EXISTS drug_schema;
+CREATE SCHEMA IF NOT EXISTS prescription_schema;
 
 CREATE TABLE IF NOT EXISTS drug_schema.drug (
     "drugId"   SERIAL PRIMARY KEY,
@@ -15,3 +16,13 @@ CREATE TABLE IF NOT EXISTS drug_schema.drug (
 );
 
 CREATE INDEX IF NOT EXISTS ix_drug_name_ci ON drug_schema.drug (lower("drugName"));
+
+CREATE TABLE IF NOT EXISTS prescription_schema.prescription (
+    "prescriptionId" SERIAL PRIMARY KEY,
+    "recordId"       INTEGER      NOT NULL,
+    "drugId"         INTEGER      NOT NULL,
+    quantity          INTEGER      NOT NULL,
+    dosage            VARCHAR(255) NOT NULL,
+    CONSTRAINT ck_prescription_quantity_non_negative CHECK (quantity >= 0),
+    CONSTRAINT ck_prescription_dosage_not_blank CHECK (length(trim(dosage)) > 0)
+);
