@@ -29,7 +29,6 @@ def create_app() -> FastAPI:
                     "loc": err.get("loc"),
                     "msg": err.get("msg"),
                     "type": err.get("type"),
-                    "input": err.get("input"),
                 }
             )
 
