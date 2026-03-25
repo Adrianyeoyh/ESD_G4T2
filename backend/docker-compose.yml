@@ -71,6 +71,24 @@ services:
     networks:
       - esd-net
 
+  prescription_service:
+    build:
+      context: .
+      dockerfile: services/prescription_service/Dockerfile
+    container_name: prescription_service
+    env_file:
+      - ./services/prescription_service/.env
+    environment:
+      APP_ENV: docker
+    ports:
+      - "5005:5005"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - esd-net
+
   payment_service:
     build:
       context: .
