@@ -10,15 +10,6 @@ class PrescriptionService:
         self.repo = PrescriptionRepository(db)
 
     def assign_prescription(self, prescription_data: PrescriptionCreate):
-        if prescription_data.quantity <= 0:
-            raise ValidationError("Quantity must be greater than 0")
-
-        if prescription_data.drug_id <= 0:
-            raise ValidationError("drugId must be a positive integer")
-
-        if prescription_data.record_id is not None and prescription_data.record_id <= 0:
-            raise ValidationError("recordId must be a positive integer when provided")
-
         prescription = self.repo.create(
             prescription_data.record_id,
             prescription_data.drug_id,
