@@ -2,7 +2,7 @@ import logging
 
 import requests
 
-from app.config.settings import BILLING_SERVICE_URL
+from app.config.settings import make_payment_SERVICE_URL
 
 logger = logging.getLogger(__name__)
 
@@ -14,10 +14,10 @@ def _post_event(event_type: str, payload: dict) -> None:
     returns 5xx and Stripe retries delivery.
     """
     body = {"eventType": event_type, **payload}
-    url = f"{BILLING_SERVICE_URL}/billing/payment-events"
+    url = f"{make_payment_SERVICE_URL}/make_payment/payment-events"
     response = requests.post(url, json=body, timeout=5)
     response.raise_for_status()
-    logger.info("billing_client: posted %s to %s -> %s", event_type, url, response.status_code)
+    logger.info("make_payment_client: posted %s to %s -> %s", event_type, url, response.status_code)
 
 
 def notify_payment_succeeded(
