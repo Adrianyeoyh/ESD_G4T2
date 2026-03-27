@@ -8,9 +8,15 @@ from app.services.payment_service import PaymentService
 from app.services.webhook_handler import process_webhook_event
 
 router = APIRouter(prefix="/payments", tags=["Payments"])
+health_router = APIRouter(tags=["Health"])
 
 
 # ── Service dependency ──────────────────────────────────────────────────────
+@health_router.get("/health")
+def health():
+    return {"status": "ok"}
+
+
 def get_payment_service(db: Session = Depends(get_db)) -> PaymentService:
     return PaymentService(db)
 
