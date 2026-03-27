@@ -15,7 +15,7 @@ RABBITMQ_USER = os.getenv("RABBITMQ_USER", "guest")
 RABBITMQ_PASS = os.getenv("RABBITMQ_PASS", "guest")
 RABBITMQ_QUEUE = os.getenv("RABBITMQ_QUEUE", "notification.payment.success")
 
-HEALTH_PORT = int(os.getenv("HEALTH_PORT", "8081"))
+HEALTH_PORT = int(os.getenv("HEALTH_PORT", "5671"))
 
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
