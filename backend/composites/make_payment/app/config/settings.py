@@ -24,3 +24,5 @@ RABBITMQ_PORT = int(os.getenv("RABBITMQ_PORT", "5672"))
 RABBITMQ_USER = os.getenv("RABBITMQ_USER", "guest")
 RABBITMQ_PASS = os.getenv("RABBITMQ_PASS", "guest")
 RABBITMQ_QUEUE = os.getenv("RABBITMQ_QUEUE", "notification.payment.success")
+
+INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "changeme-dev-key")
