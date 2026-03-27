@@ -43,7 +43,7 @@ def _handle_succeeded(payment_intent_id: str, intent: dict) -> None:
     db = SessionLocal()
     try:
         svc = PaymentService(db)
-        paid_at = datetime.fromtimestamp(intent.get("created", 0), tz=timezone.utc)
+        paid_at = datetime.now(timezone.utc)
         payment = svc.mark_succeeded(payment_intent_id=payment_intent_id, paid_at=paid_at)
         make_payment_client.notify_payment_succeeded(
             payment_id=payment.payment_id,
