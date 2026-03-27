@@ -19,6 +19,19 @@ These have already been fixed and are documented here for reference only.
 | C4 | Payment | `webhook_service.py` imported `make_payment_client` which didn't exist as a file | `make_payment_client.py` now exists at `app/clients/make_payment_client.py` |
 | C5 | Payment | Missing `requirements/payment.txt`; Docker build would fail | Requirements file created |
 | C6 | Notification | Dead code in `settings.py` — `RABBITMQ_HOST` if/else was overwritten by `os.getenv()` on the next line | Removed the redundant `os.getenv()` overwrite line |
+| CR-1 | Orchestrator | `InvoiceStatus` enum import crashes startup | Created `app/clients/` with dedicated client modules; use plain strings |
+| CR-2 | Orchestrator | Absolute imports fail in Docker | Changed to relative imports |
+| CR-3 | Orchestrator | No webhook authentication on `/payment-events` | Added `X-Internal-Api-Key` header validation |
+| CR-4 | Notification | Infinite requeue loop on consumer errors | Split retryable vs non-retryable error handling |
+| CR-5 | Notification | Twilio credentials not validated at startup | Added `__init__` validation with `ValueError` |
+| CR-6 | Invoice | No transaction rollback on commit failure | Added `_commit_and_refresh` helper with rollback |
+| M-2 | Orchestrator | `_close_record` bypasses `_request` helper | Resolved via CR-1 client refactor |
+| M-7 | Invoice | `float` used for money | Changed to `Decimal` in service and repository |
+| M-12 | Orchestrator | `UNPAID` vs `DRAFT` mismatch | Resolved via CR-1 — uses `"draft"` string |
+| H-1 | Orchestrator | `debug=True` hardcoded | Changed to `debug=False` |
+| H-5 | Payment | `client_secret` exposed on all GET endpoints | Created `PaymentReadResponse` without `client_secret` for GET/cancel routes |
+| H-7 | Payment | No amount validation (zero/negative) | Added `Field(gt=0)` to `PaymentIntentCreate.amount` |
+| H-8 | Invoice | Missing state machine enforcement | Added `ALLOWED_TRANSITIONS` map and `_transition` helper; guarded `update_total` |
 
 ---
 

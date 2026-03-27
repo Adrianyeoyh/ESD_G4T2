@@ -47,40 +47,47 @@ class InvoiceService:
     def list_invoices(self):
         return self.repo.list_all()
 
-    def mark_payment_pending(self, invoice_id: int):
-        invoice = self.get_invoice(invoice_id)
+    ALLOWED_TRANSITIONS = {
+        InvoiceStatus.DRAFT: {InvoiceStatus.PAYMENT_PENDING, InvoiceStatus.CANCELLED},
+        InvoiceStatus.PAYMENT_PENDING: {InvoiceStatus.PAID, InvoiceStatus.FAILED, InvoiceStatus.CANCELLED},
+        InvoiceStatus.FAILED: {InvoiceStatus.PAYMENT_PENDING, InvoiceStatus.CANCELLED},
+        InvoiceStatus.PAID: set(),
+        InvoiceStatus.CANCELLED: set(),
+    }
 
-        if invoice.status == InvoiceStatus.PAID:
-            raise ConflictError("Invoice is already paid")
-
-        invoice.status = InvoiceStatus.PAYMENT_PENDING
+    def _transition(self, invoice, new_status: InvoiceStatus):
+        allowed = self.ALLOWED_TRANSITIONS.get(invoice.status, set())
+        if new_status not in allowed:
+            raise ConflictError(
+                f"Cannot transition from {invoice.status.value} to {new_status.value}"
+            )
+        invoice.status = new_status
         self.repo.save(invoice)
         self._commit_and_refresh(invoice)
         return invoice
+
+    def mark_payment_pending(self, invoice_id: int):
+        invoice = self.get_invoice(invoice_id)
+        return self._transition(invoice, InvoiceStatus.PAYMENT_PENDING)
 
     def mark_paid(self, invoice_id: int):
         invoice = self.get_invoice(invoice_id)
-        invoice.status = InvoiceStatus.PAID
-        self.repo.save(invoice)
-        self._commit_and_refresh(invoice)
-        return invoice
+        return self._transition(invoice, InvoiceStatus.PAID)
 
     def mark_failed(self, invoice_id: int):
         invoice = self.get_invoice(invoice_id)
-        invoice.status = InvoiceStatus.FAILED
-        self.repo.save(invoice)
-        self._commit_and_refresh(invoice)
-        return invoice
+        return self._transition(invoice, InvoiceStatus.FAILED)
 
     def mark_cancelled(self, invoice_id: int):
         invoice = self.get_invoice(invoice_id)
-        invoice.status = InvoiceStatus.CANCELLED
-        self.repo.save(invoice)
-        self._commit_and_refresh(invoice)
-        return invoice
+        return self._transition(invoice, InvoiceStatus.CANCELLED)
 
     def update_total(self, invoice_id: int, new_total: Decimal):
         invoice = self.get_invoice(invoice_id)
+        if invoice.status in (InvoiceStatus.PAID, InvoiceStatus.CANCELLED):
+            raise ConflictError(
+                f"Cannot update total on a {invoice.status.value} invoice"
+            )
         invoice.total = new_total
         self.repo.save(invoice)
         self._commit_and_refresh(invoice)
