@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 from decimal import Decimal
 import requests
@@ -8,6 +9,8 @@ from app.services import stripe_service
 from app.config.settings import INVOICE_SERVICE_URL
 from utils.exceptions import NotFoundError, ConflictError, AppError
 from common.tools import PaymentStatus
+
+logger = logging.getLogger(__name__)
 
 
 class PaymentService:
@@ -74,6 +77,7 @@ class PaymentService:
 
         self.db.commit()
         self.db.refresh(payment)
+        logger.info("Created payment attempt #%d for invoice %d (pi=%s)", attempt_number, invoice_id, intent.id)
         return payment
 
     def get_payment(self, payment_id: int):
@@ -99,6 +103,7 @@ class PaymentService:
         payment.status = PaymentStatus.SUCCEEDED
         payment.paid_at = paid_at or datetime.now(timezone.utc)
         self.repo.save(payment)
+        logger.info("Payment %s marked SUCCEEDED", payment_intent_id)
         if commit:
             self.db.commit()
             self.db.refresh(payment)
@@ -121,6 +126,7 @@ class PaymentService:
         payment.error_code = error_code
         payment.error_message = error_message
         self.repo.save(payment)
+        logger.info("Payment %s marked FAILED (code=%s)", payment_intent_id, error_code)
         if commit:
             self.db.commit()
             self.db.refresh(payment)
@@ -143,6 +149,7 @@ class PaymentService:
         self.repo.save(payment)
         self.db.commit()
         self.db.refresh(payment)
+        logger.info("Payment %d cancelled", payment_id)
         return payment
 
     def mark_cancelled_by_webhook(self, payment_intent_id: str, commit: bool = True):
