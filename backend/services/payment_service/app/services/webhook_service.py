@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime, timezone
 from app.services import stripe_service
-from app.clients import billing_client
+from app.clients import make_payment_client
 from app.config.db import SessionLocal
 
 logger = logging.getLogger(__name__)
@@ -45,7 +45,7 @@ def _handle_succeeded(payment_intent_id: str, intent: dict) -> None:
         svc = PaymentService(db)
         paid_at = datetime.fromtimestamp(intent.get("created", 0), tz=timezone.utc)
         payment = svc.mark_succeeded(payment_intent_id=payment_intent_id, paid_at=paid_at)
-        billing_client.notify_payment_succeeded(
+        make_payment_client.notify_payment_succeeded(
             payment_id=payment.payment_id,
             invoice_id=payment.invoice_id,
             record_id=payment.record_id,
@@ -74,7 +74,7 @@ def _handle_failed(payment_intent_id: str, intent: dict) -> None:
             error_code=error_code,
             error_message=error_message,
         )
-        billing_client.notify_payment_failed(
+        make_payment_client.notify_payment_failed(
             payment_id=payment.payment_id,
             invoice_id=payment.invoice_id,
             record_id=payment.record_id,
@@ -96,7 +96,7 @@ def _handle_cancelled(payment_intent_id: str) -> None:
     try:
         svc = PaymentService(db)
         payment = svc.mark_cancelled_by_webhook(payment_intent_id=payment_intent_id)
-        billing_client.notify_payment_cancelled(
+        make_payment_client.notify_payment_cancelled(
             payment_id=payment.payment_id,
             invoice_id=payment.invoice_id,
             record_id=payment.record_id,
