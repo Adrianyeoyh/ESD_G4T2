@@ -4,7 +4,7 @@ import requests
 from flask import g, has_request_context
 
 from app.config import settings
-from utils.exceptions import NotFoundError
+from utils.exceptions import AppError, NotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -12,25 +12,25 @@ logger = logging.getLogger(__name__)
 # Orchestrator-specific exceptions (raised by client helpers, handled by the
 # controller error-handler layer).
 # ---------------------------------------------------------------------------
-from dataclasses import dataclass
 
 
-class OrchestrationError(Exception):
+class OrchestrationError(AppError):
     """A downstream service rejected the request or is unreachable."""
 
     def __init__(self, message: str, error_code: str, status_code: int = 502, extra: dict | None = None):
         super().__init__(message)
-        self.message = message
         self.status_code = status_code
         self.error_code = error_code
         self.extra = extra or {}
 
 
-@dataclass
-class ExternalResponseError(Exception):
+class ExternalResponseError(AppError):
     """Unexpected HTTP status from a dependency (not 2xx, 400, 404, or 409)."""
-    status_code: int
-    payload: dict
+
+    def __init__(self, status_code: int, payload: dict):
+        super().__init__("Unexpected dependency response")
+        self.status_code = status_code
+        self.payload = payload
 
 
 # ---------------------------------------------------------------------------
