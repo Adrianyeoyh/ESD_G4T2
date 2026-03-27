@@ -1,6 +1,6 @@
 import logging
 
-from app.clients import invoice_client, payment_client, records_client, notification_client
+from app.clients import invoice_client, payment_client, records_client, notification_client, patient_client
 from app.clients.base import OrchestrationError
 from app.config import settings
 from utils.exceptions import ValidationError
@@ -86,7 +86,10 @@ class MakePaymentService:
             if record_id is not None:
                 records_client.close_record(record_id)
                 try:
-                    notification_client.publish_success_notification(record_id, invoice_id, payment_intent_id)
+                    phone_number = self._get_patient_phone(record_id)
+                    notification_client.publish_success_notification(
+                        record_id, invoice_id, payment_intent_id, phone_number,
+                    )
                     notification_status = "queued"
                 except Exception:
                     logger.exception("Non-critical: failed to publish notification for invoice %s", invoice_id)
@@ -135,6 +138,13 @@ class MakePaymentService:
                 if latest["status"] == "paid":
                     return latest
             raise
+
+    def _get_patient_phone(self, record_id: int) -> str:
+        record = records_client.get_record(record_id)
+        patient_id = record["patientId"]
+        patient = patient_client.get_patient(patient_id)
+        phone_no = patient["phoneNo"]
+        return f"+65{phone_no}"
 
     def _compensate_payment_and_fail_invoice(self, payment_id: int | None, invoice_id: int, reason: str):
         if payment_id:

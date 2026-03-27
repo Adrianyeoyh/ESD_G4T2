@@ -1,7 +1,12 @@
 import requests
 
 from app.config import settings
-from app.clients.base import OrchestrationError
+from app.clients.base import http_request, OrchestrationError
+
+
+def get_record(record_id: int) -> dict:
+    url = f"{settings.RECORDS_SERVICE_URL}/record/{record_id}"
+    return http_request("GET", url)
 
 
 def close_record(record_id: int) -> None:

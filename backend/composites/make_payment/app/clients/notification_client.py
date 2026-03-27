@@ -31,9 +31,14 @@ def _get_channel() -> pika.channel.Channel:
     return _channel
 
 
-def publish_success_notification(record_id: int, invoice_id: int, payment_intent_id: str | None) -> None:
+def publish_success_notification(
+    record_id: int,
+    invoice_id: int,
+    payment_intent_id: str | None,
+    phone_number: str,
+) -> None:
     body = {
-        "phoneNumber": settings.NOTIFICATION_PHONE_NUMBER,
+        "phoneNumber": phone_number,
         "message": (
             f"Payment successful for record {record_id}, invoice {invoice_id}. "
             f"Ref: {payment_intent_id or 'n/a'}."
