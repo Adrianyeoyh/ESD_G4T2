@@ -82,10 +82,16 @@ class MakePaymentService:
 
         if event_type == "payment.succeeded":
             self._mark_invoice_paid_idempotent(invoice_id)
+            notification_status = "skipped"
             if record_id is not None:
                 records_client.close_record(record_id)
-                notification_client.publish_success_notification(record_id, invoice_id, payment_intent_id)
-            return {"eventType": event_type, "invoiceStatus": "paid"}
+                try:
+                    notification_client.publish_success_notification(record_id, invoice_id, payment_intent_id)
+                    notification_status = "queued"
+                except Exception:
+                    logger.exception("Non-critical: failed to publish notification for invoice %s", invoice_id)
+                    notification_status = "failed"
+            return {"eventType": event_type, "invoiceStatus": "paid", "notificationStatus": notification_status}
 
         if event_type == "payment.failed":
             invoice_client.mark_failed(invoice_id)
