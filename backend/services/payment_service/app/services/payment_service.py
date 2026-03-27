@@ -91,7 +91,7 @@ class PaymentService:
     def list_payments_by_invoice_id(self, invoice_id: int):
         return self.repo.list_by_invoice_id(invoice_id)
 
-    def mark_succeeded(self, payment_intent_id: str, paid_at: datetime | None = None):
+    def mark_succeeded(self, payment_intent_id: str, paid_at: datetime | None = None, commit: bool = True):
         payment = self.repo.get_by_payment_intent_id(payment_intent_id)
         if not payment:
             raise NotFoundError("Payment not found for this PaymentIntent")
@@ -99,8 +99,11 @@ class PaymentService:
         payment.status = PaymentStatus.SUCCEEDED
         payment.paid_at = paid_at or datetime.now(timezone.utc)
         self.repo.save(payment)
-        self.db.commit()
-        self.db.refresh(payment)
+        if commit:
+            self.db.commit()
+            self.db.refresh(payment)
+        else:
+            self.db.flush()
         return payment
 
     def mark_failed(
@@ -108,6 +111,7 @@ class PaymentService:
         payment_intent_id: str,
         error_code: str | None = None,
         error_message: str | None = None,
+        commit: bool = True,
     ):
         payment = self.repo.get_by_payment_intent_id(payment_intent_id)
         if not payment:
@@ -117,8 +121,11 @@ class PaymentService:
         payment.error_code = error_code
         payment.error_message = error_message
         self.repo.save(payment)
-        self.db.commit()
-        self.db.refresh(payment)
+        if commit:
+            self.db.commit()
+            self.db.refresh(payment)
+        else:
+            self.db.flush()
         return payment
 
     def mark_cancelled(self, payment_id: int):
@@ -138,7 +145,7 @@ class PaymentService:
         self.db.refresh(payment)
         return payment
 
-    def mark_cancelled_by_webhook(self, payment_intent_id: str):
+    def mark_cancelled_by_webhook(self, payment_intent_id: str, commit: bool = True):
         """DB-only cancel — used by the Stripe webhook handler.
 
         Stripe has already cancelled the PaymentIntent by the time this webhook
@@ -154,6 +161,9 @@ class PaymentService:
         payment.status = PaymentStatus.CANCELLED
         payment.cancelled_at = datetime.now(timezone.utc)
         self.repo.save(payment)
-        self.db.commit()
-        self.db.refresh(payment)
+        if commit:
+            self.db.commit()
+            self.db.refresh(payment)
+        else:
+            self.db.flush()
         return payment
