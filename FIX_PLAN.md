@@ -32,6 +32,15 @@ These have already been fixed and are documented here for reference only.
 | H-5 | Payment | `client_secret` exposed on all GET endpoints | Created `PaymentReadResponse` without `client_secret` for GET/cancel routes |
 | H-7 | Payment | No amount validation (zero/negative) | Added `Field(gt=0)` to `PaymentIntentCreate.amount` |
 | H-8 | Invoice | Missing state machine enforcement | Added `ALLOWED_TRANSITIONS` map and `_transition` helper; guarded `update_total` |
+| H-4 | Payment | Wrong `paid_at` timestamp (used intent creation time) | Changed to `datetime.now(timezone.utc)` |
+| H-6 | Payment | Non-atomic webhook flow (commit before notification) | Added `commit` param; webhook handlers flush then commit after notification |
+| M-3 | Orchestrator | Notification failure blocks webhook handler | Wrapped in try/except; returns `notificationStatus` in response |
+| M-4 | Payment | Decimal truncation in Stripe cents conversion | Used `ROUND_HALF_UP` with `to_integral_value` |
+| M-5 | Payment | No idempotency check in webhook handlers | Added status check before processing; skip if already in target state |
+| H-3 | Orchestrator | RabbitMQ connection opened/closed per message | Persistent connection with auto-reconnect on stale channel |
+| H-10 | Notification | No payload validation in consumer | Already resolved via CR-4 (phone format, message validation, poison pill handling) |
+| H-11 | Notification | No RabbitMQ connection recovery | Added reconnect loop with exponential backoff (max 30s) |
+| L-4 | Notification | No graceful shutdown | Added SIGTERM/SIGINT handlers calling `stop_consuming` |
 
 ---
 
