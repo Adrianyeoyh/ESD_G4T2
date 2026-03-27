@@ -276,7 +276,7 @@ These have already been fixed and are documented here for reference only.
 - CR-3 (webhook auth)
 - CR-4 (infinite requeue loop)
 - CR-5 (Twilio credential validation — prevents CR-4 from triggering)
-- CR-6 (invoice rollback)
+- CR-6 (invoice rollback)\
 - H-5 (client_secret exposure)
 - H-7 (amount validation)
 - H-8 (state machine)
