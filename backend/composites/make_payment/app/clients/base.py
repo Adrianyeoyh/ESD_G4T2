@@ -1,7 +1,12 @@
+import logging
+
 import requests
+from flask import g, has_request_context
 
 from app.config import settings
 from utils.exceptions import NotFoundError
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Orchestrator-specific exceptions (raised by client helpers, handled by the
@@ -32,6 +37,12 @@ class ExternalResponseError(Exception):
 # Shared HTTP helper — every client module delegates here.
 # ---------------------------------------------------------------------------
 
+def _get_correlation_id() -> str | None:
+    if has_request_context():
+        return getattr(g, "correlation_id", None)
+    return None
+
+
 def http_request(method: str, url: str, json_body: dict | None = None) -> dict:
     """Make an HTTP request to a downstream microservice.
 
@@ -39,11 +50,17 @@ def http_request(method: str, url: str, json_body: dict | None = None) -> dict:
     Raises OrchestrationError on 400/409, NotFoundError on 404,
     ExternalResponseError on anything else.
     """
+    headers = {}
+    correlation_id = _get_correlation_id()
+    if correlation_id:
+        headers["X-Correlation-ID"] = correlation_id
+
     try:
         response = requests.request(
             method=method,
             url=url,
             json=json_body,
+            headers=headers,
             timeout=settings.HTTP_TIMEOUT_SECONDS,
         )
     except requests.RequestException as exc:
