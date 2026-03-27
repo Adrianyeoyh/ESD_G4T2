@@ -1,6 +1,10 @@
+import logging
+
 from fastapi import APIRouter, Depends, Request, status, HTTPException
 from sqlalchemy.orm import Session
 import stripe
+
+logger = logging.getLogger(__name__)
 
 from app.config.db import get_db
 from app.schemas.payment_schema import PaymentIntentCreate, PaymentResponse, PaymentReadResponse
@@ -43,7 +47,8 @@ def create_payment_intent(
             detail=f"Stripe unavailable: {exc.user_message or str(exc)}",
         )
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Payment intent failed: {exc}")
+        logger.exception("Payment intent creation failed")
+        raise HTTPException(status_code=503, detail="Payment intent failed")
 
 
 @router.get("/{payment_id}", response_model=PaymentReadResponse)
