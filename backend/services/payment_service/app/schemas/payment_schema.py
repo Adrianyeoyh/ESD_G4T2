@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 from pydantic.alias_generators import to_camel
 from typing import Optional
 from decimal import Decimal
@@ -8,20 +8,19 @@ from datetime import datetime
 class PaymentIntentCreate(BaseModel):
     invoice_id: int
     record_id: int
-    amount: Decimal
+    amount: Decimal = Field(gt=0)
     currency: str
     description: Optional[str] = None
 
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
 
-class PaymentResponse(BaseModel):
+class PaymentReadResponse(BaseModel):
     payment_id: int
     invoice_id: int
     record_id: int
     provider: str
     payment_intent_id: str
-    client_secret: Optional[str] = None
     attempt_number: int
     status: str
     amount: Decimal
@@ -46,3 +45,7 @@ class PaymentResponse(BaseModel):
     @field_serializer("paid_at", "cancelled_at", "created_at", "updated_at")
     def serialize_datetime(self, v: Optional[datetime]) -> Optional[str]:
         return v.isoformat() if v else None
+
+
+class PaymentResponse(PaymentReadResponse):
+    client_secret: Optional[str] = None

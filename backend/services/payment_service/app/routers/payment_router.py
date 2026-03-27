@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 import stripe
 
 from app.config.db import get_db
-from app.schemas.payment_schema import PaymentIntentCreate, PaymentResponse
+from app.schemas.payment_schema import PaymentIntentCreate, PaymentResponse, PaymentReadResponse
 from app.services.payment_service import PaymentService
 from app.services.webhook_handler import process_webhook_event
 
@@ -40,24 +40,24 @@ def create_payment_intent(
         raise HTTPException(status_code=503, detail=f"Payment intent failed: {exc}")
 
 
-@router.get("/{payment_id}", response_model=PaymentResponse)
+@router.get("/{payment_id}", response_model=PaymentReadResponse)
 def get_payment(payment_id: int, svc: PaymentService = Depends(get_payment_service)):
-    return PaymentResponse.model_validate(svc.get_payment(payment_id))
+    return PaymentReadResponse.model_validate(svc.get_payment(payment_id))
 
 
-@router.get("/invoice/{invoice_id}", response_model=list[PaymentResponse])
+@router.get("/invoice/{invoice_id}", response_model=list[PaymentReadResponse])
 def list_payments_by_invoice(invoice_id: int, svc: PaymentService = Depends(get_payment_service)):
-    return [PaymentResponse.model_validate(p) for p in svc.list_payments_by_invoice_id(invoice_id)]
+    return [PaymentReadResponse.model_validate(p) for p in svc.list_payments_by_invoice_id(invoice_id)]
 
 
-@router.get("/invoice/{invoice_id}/latest", response_model=PaymentResponse)
+@router.get("/invoice/{invoice_id}/latest", response_model=PaymentReadResponse)
 def get_latest_payment_by_invoice(invoice_id: int, svc: PaymentService = Depends(get_payment_service)):
-    return PaymentResponse.model_validate(svc.get_latest_payment_by_invoice_id(invoice_id))
+    return PaymentReadResponse.model_validate(svc.get_latest_payment_by_invoice_id(invoice_id))
 
 
-@router.post("/{payment_id}/cancel", response_model=PaymentResponse)
+@router.post("/{payment_id}/cancel", response_model=PaymentReadResponse)
 def cancel_payment(payment_id: int, svc: PaymentService = Depends(get_payment_service)):
-    return PaymentResponse.model_validate(svc.mark_cancelled(payment_id))
+    return PaymentReadResponse.model_validate(svc.mark_cancelled(payment_id))
 
 
 @router.post("/webhook", status_code=status.HTTP_200_OK)
