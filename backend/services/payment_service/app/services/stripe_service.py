@@ -1,5 +1,5 @@
 import stripe
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from app.config.settings import STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET
 
 stripe.api_key = STRIPE_SECRET_KEY
@@ -22,7 +22,7 @@ def create_payment_intent(
     if not stripe.api_key:
         raise ValueError("Stripe API key is not configured")
 
-    amount_cents = int(amount * 100)
+    amount_cents = int((amount * 100).to_integral_value(rounding=ROUND_HALF_UP))
     return stripe.PaymentIntent.create(
         amount=amount_cents,
         currency=currency.lower(),
