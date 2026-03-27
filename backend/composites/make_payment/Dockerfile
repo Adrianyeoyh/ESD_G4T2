@@ -5,7 +5,7 @@ WORKDIR /service
 COPY requirements /service/requirements
 COPY composites/make_payment /service
 
-RUN pip install --no-cache-dir -r requirements/boilerplate.txt
+RUN pip install --no-cache-dir -r requirements/make_payment.txt
 
 EXPOSE 5005
 
