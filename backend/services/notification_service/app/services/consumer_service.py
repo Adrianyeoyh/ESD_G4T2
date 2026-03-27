@@ -1,6 +1,8 @@
 import json
 import logging
 import re
+import signal
+import time
 
 import pika
 
@@ -18,8 +20,15 @@ logger = logging.getLogger(__name__)
 
 class NotificationConsumer:
     MAX_RETRIES = 3
+    MAX_RECONNECT_DELAY = 30
 
     def __init__(self):
+        self.connection = None
+        self.channel = None
+        self.twilio_service = TwilioService()
+        self._shutdown_requested = False
+
+    def _connect(self):
         credentials = pika.PlainCredentials(RABBITMQ_USER, RABBITMQ_PASS)
         parameters = pika.ConnectionParameters(
             host=RABBITMQ_HOST,
@@ -31,11 +40,8 @@ class NotificationConsumer:
         self.connection = pika.BlockingConnection(parameters)
         self.channel = self.connection.channel()
         self.channel.queue_declare(queue=RABBITMQ_QUEUE, durable=True)
-
-        # One message at a time per worker
         self.channel.basic_qos(prefetch_count=1)
-
-        self.twilio_service = TwilioService()
+        logger.info("Connected to RabbitMQ at %s:%s", RABBITMQ_HOST, RABBITMQ_PORT)
 
     @staticmethod
     def _is_valid_phone(phone_number: str) -> bool:
@@ -93,10 +99,48 @@ class NotificationConsumer:
                 logger.error("Dropping notification after %d retries: %s", self.MAX_RETRIES, e)
                 ch.basic_ack(delivery_tag=method.delivery_tag)
 
+    def _shutdown(self, signum, _frame):
+        logger.info("Received signal %s, shutting down gracefully...", signum)
+        self._shutdown_requested = True
+        if self.channel and self.channel.is_open:
+            self.channel.stop_consuming()
+
     def start(self):
-        self.channel.basic_consume(
-            queue=RABBITMQ_QUEUE,
-            on_message_callback=self.callback,
-        )
-        logger.info("Waiting for messages on queue: %s", RABBITMQ_QUEUE)
-        self.channel.start_consuming()
+        signal.signal(signal.SIGTERM, self._shutdown)
+        signal.signal(signal.SIGINT, self._shutdown)
+
+        reconnect_delay = 1
+        while not self._shutdown_requested:
+            try:
+                self._connect()
+                reconnect_delay = 1
+
+                self.channel.basic_consume(
+                    queue=RABBITMQ_QUEUE,
+                    on_message_callback=self.callback,
+                )
+                logger.info("Waiting for messages on queue: %s", RABBITMQ_QUEUE)
+                self.channel.start_consuming()
+
+            except pika.exceptions.AMQPConnectionError as e:
+                if self._shutdown_requested:
+                    break
+                logger.error("RabbitMQ connection lost: %s. Reconnecting in %ds...", e, reconnect_delay)
+                time.sleep(reconnect_delay)
+                reconnect_delay = min(reconnect_delay * 2, self.MAX_RECONNECT_DELAY)
+
+            except Exception as e:
+                if self._shutdown_requested:
+                    break
+                logger.exception("Unexpected error: %s. Reconnecting in %ds...", e, reconnect_delay)
+                time.sleep(reconnect_delay)
+                reconnect_delay = min(reconnect_delay * 2, self.MAX_RECONNECT_DELAY)
+
+            finally:
+                if self.connection and self.connection.is_open:
+                    try:
+                        self.connection.close()
+                    except Exception:
+                        pass
+
+        logger.info("Consumer shut down.")
