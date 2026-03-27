@@ -2,7 +2,9 @@ import json
 import logging
 import re
 import signal
+import threading
 import time
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 import pika
 
@@ -12,10 +14,34 @@ from app.config.settings import (
     RABBITMQ_USER,
     RABBITMQ_PASS,
     RABBITMQ_QUEUE,
+    HEALTH_PORT,
 )
 from app.services.twilio_service import TwilioService
 
 logger = logging.getLogger(__name__)
+
+
+class _HealthHandler(BaseHTTPRequestHandler):
+    consumer_ref = None
+
+    def do_GET(self):
+        if self.path == "/health":
+            connected = (
+                self.consumer_ref
+                and self.consumer_ref.connection
+                and self.consumer_ref.connection.is_open
+            )
+            status = 200 if connected else 503
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "ok" if connected else "disconnected"}).encode())
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def log_message(self, format, *args):
+        pass  # suppress request logs
 
 
 class NotificationConsumer:
@@ -105,9 +131,17 @@ class NotificationConsumer:
         if self.channel and self.channel.is_open:
             self.channel.stop_consuming()
 
+    def _start_health_server(self):
+        _HealthHandler.consumer_ref = self
+        server = HTTPServer(("0.0.0.0", HEALTH_PORT), _HealthHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        logger.info("Health endpoint listening on port %s", HEALTH_PORT)
+
     def start(self):
         signal.signal(signal.SIGTERM, self._shutdown)
         signal.signal(signal.SIGINT, self._shutdown)
+        self._start_health_server()
 
         reconnect_delay = 1
         while not self._shutdown_requested:
