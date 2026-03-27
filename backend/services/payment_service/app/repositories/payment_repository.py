@@ -2,6 +2,9 @@ from app.models.payment_model import Payment
 from sqlalchemy import func, select, text
 
 
+_ADVISORY_LOCK_CLASS_ID = 1001  # unique per-service constant to avoid lock collisions
+
+
 class PaymentRepository:
     def __init__(self, db):
         self.db = db
@@ -71,8 +74,8 @@ class PaymentRepository:
         # Acquire a per-invoice transaction advisory lock so concurrent retries for
         # the same invoice cannot generate duplicate attempt numbers.
         self.db.execute(
-            text("SELECT pg_advisory_xact_lock(:lock_key)"),
-            {"lock_key": int(invoice_id)},
+            text("SELECT pg_advisory_xact_lock(:class_id, :lock_key)"),
+            {"class_id": _ADVISORY_LOCK_CLASS_ID, "lock_key": int(invoice_id)},
         )
 
         max_attempt = self.db.execute(
