@@ -1,6 +1,7 @@
 from flask import jsonify, request
 
-from backend.composites.make_payment.app.services.make_payment_service import ExternalResponseError, MakePaymentService, OrchestrationError
+from app.clients.base import ExternalResponseError, OrchestrationError
+from app.services.make_payment_service import MakePaymentService
 from utils.exceptions import AppError, ValidationError
 
 service = MakePaymentService()
