@@ -1,14 +1,34 @@
-from flask import Flask, jsonify
+import logging
+import uuid
+
+from flask import Flask, g, jsonify, request
 from app.clients.base import ExternalResponseError, OrchestrationError
 from app.routes.make_payment_routes import make_payment_bp
 from utils.exceptions import AppError, ValidationError
+
+logger = logging.getLogger(__name__)
 
 
 def create_app():
     app = Flask(__name__)
     app.register_blueprint(make_payment_bp)
+    _register_correlation_id(app)
     _register_error_handlers(app)
     return app
+
+
+def _register_correlation_id(app):
+    @app.before_request
+    def set_correlation_id():
+        g.correlation_id = request.headers.get("X-Correlation-ID", str(uuid.uuid4()))
+        logger.info("[%s] %s %s", g.correlation_id, request.method, request.path)
+
+    @app.after_request
+    def add_correlation_header(response):
+        correlation_id = getattr(g, "correlation_id", None)
+        if correlation_id:
+            response.headers["X-Correlation-ID"] = correlation_id
+        return response
 
 
 def _register_error_handlers(app):
