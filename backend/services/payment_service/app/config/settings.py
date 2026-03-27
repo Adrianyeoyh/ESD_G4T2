@@ -23,3 +23,5 @@ STRIPE_PUBLISHABLE_KEY = os.getenv("STRIPE_PUBLISHABLE_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 INVOICE_SERVICE_URL = os.getenv("INVOICE_SERVICE_URL", "http://localhost:5003")
 make_payment_SERVICE_URL = os.getenv("make_payment_SERVICE_URL", "http://localhost:5005")
+
+INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "changeme-dev-key")

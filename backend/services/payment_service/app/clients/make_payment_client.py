@@ -2,7 +2,7 @@ import logging
 
 import requests
 
-from app.config.settings import make_payment_SERVICE_URL
+from app.config.settings import make_payment_SERVICE_URL, INTERNAL_API_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,8 @@ def _post_event(event_type: str, payload: dict) -> None:
     """
     body = {"eventType": event_type, **payload}
     url = f"{make_payment_SERVICE_URL}/make_payment/payment-events"
-    response = requests.post(url, json=body, timeout=5)
+    headers = {"X-Internal-Api-Key": INTERNAL_API_KEY}
+    response = requests.post(url, json=body, headers=headers, timeout=5)
     response.raise_for_status()
     logger.info("make_payment_client: posted %s to %s -> %s", event_type, url, response.status_code)
 
