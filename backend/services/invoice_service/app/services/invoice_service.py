@@ -30,6 +30,7 @@ class InvoiceService:
 
         invoice = self.repo.create(record_id, total)
         self._commit_and_refresh(invoice)
+        logger.info("Created invoice %d for record %d (total=%s)", invoice.invoice_id, record_id, total)
         return invoice
 
     def get_invoice(self, invoice_id: int):
@@ -61,9 +62,11 @@ class InvoiceService:
             raise ConflictError(
                 f"Cannot transition from {invoice.status.value} to {new_status.value}"
             )
+        old_status = invoice.status.value
         invoice.status = new_status
         self.repo.save(invoice)
         self._commit_and_refresh(invoice)
+        logger.info("Invoice %d transitioned %s -> %s", invoice.invoice_id, old_status, new_status.value)
         return invoice
 
     def mark_payment_pending(self, invoice_id: int):
@@ -105,3 +108,4 @@ class InvoiceService:
         except SQLAlchemyError:
             self.db.rollback()
             raise
+        logger.info("Deleted invoice %d", invoice_id)
