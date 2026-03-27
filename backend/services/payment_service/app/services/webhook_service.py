@@ -44,7 +44,7 @@ def _handle_succeeded(payment_intent_id: str, intent: dict) -> None:
     try:
         svc = PaymentService(db)
         paid_at = datetime.now(timezone.utc)
-        payment = svc.mark_succeeded(payment_intent_id=payment_intent_id, paid_at=paid_at)
+        payment = svc.mark_succeeded(payment_intent_id=payment_intent_id, paid_at=paid_at, commit=False)
         make_payment_client.notify_payment_succeeded(
             payment_id=payment.payment_id,
             invoice_id=payment.invoice_id,
@@ -54,6 +54,7 @@ def _handle_succeeded(payment_intent_id: str, intent: dict) -> None:
             amount=float(payment.amount),
             currency=payment.currency,
         )
+        db.commit()
     except Exception:
         db.rollback()
         raise
@@ -73,6 +74,7 @@ def _handle_failed(payment_intent_id: str, intent: dict) -> None:
             payment_intent_id=payment_intent_id,
             error_code=error_code,
             error_message=error_message,
+            commit=False,
         )
         make_payment_client.notify_payment_failed(
             payment_id=payment.payment_id,
@@ -83,6 +85,7 @@ def _handle_failed(payment_intent_id: str, intent: dict) -> None:
             error_code=error_code,
             error_message=error_message,
         )
+        db.commit()
     except Exception:
         db.rollback()
         raise
@@ -95,7 +98,7 @@ def _handle_cancelled(payment_intent_id: str) -> None:
     db = SessionLocal()
     try:
         svc = PaymentService(db)
-        payment = svc.mark_cancelled_by_webhook(payment_intent_id=payment_intent_id)
+        payment = svc.mark_cancelled_by_webhook(payment_intent_id=payment_intent_id, commit=False)
         make_payment_client.notify_payment_cancelled(
             payment_id=payment.payment_id,
             invoice_id=payment.invoice_id,
@@ -103,6 +106,7 @@ def _handle_cancelled(payment_intent_id: str) -> None:
             payment_intent_id=payment.payment_intent_id,
             attempt_number=payment.attempt_number,
         )
+        db.commit()
     except Exception:
         db.rollback()
         raise
