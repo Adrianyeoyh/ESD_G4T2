@@ -1,5 +1,6 @@
 import json
 import logging
+import threading
 
 import pika
 
@@ -9,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 _connection: pika.BlockingConnection | None = None
 _channel: pika.channel.Channel | None = None
+_lock = threading.Lock()
 
 
 def _get_channel() -> pika.channel.Channel:
@@ -45,23 +47,24 @@ def publish_success_notification(
         ),
     }
 
-    try:
-        channel = _get_channel()
-        channel.basic_publish(
-            exchange="",
-            routing_key=settings.RABBITMQ_QUEUE,
-            body=json.dumps(body),
-            properties=pika.BasicProperties(delivery_mode=2),
-        )
-    except pika.exceptions.AMQPError:
-        # Connection went stale — reset and retry once
-        global _connection, _channel
-        _connection = None
-        _channel = None
-        channel = _get_channel()
-        channel.basic_publish(
-            exchange="",
-            routing_key=settings.RABBITMQ_QUEUE,
-            body=json.dumps(body),
-            properties=pika.BasicProperties(delivery_mode=2),
-        )
+    with _lock:
+        try:
+            channel = _get_channel()
+            channel.basic_publish(
+                exchange="",
+                routing_key=settings.RABBITMQ_QUEUE,
+                body=json.dumps(body),
+                properties=pika.BasicProperties(delivery_mode=2),
+            )
+        except pika.exceptions.AMQPError:
+            # Connection went stale — reset and retry once
+            global _connection, _channel
+            _connection = None
+            _channel = None
+            channel = _get_channel()
+            channel.basic_publish(
+                exchange="",
+                routing_key=settings.RABBITMQ_QUEUE,
+                body=json.dumps(body),
+                properties=pika.BasicProperties(delivery_mode=2),
+            )
