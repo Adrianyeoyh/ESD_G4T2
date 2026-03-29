@@ -5,9 +5,15 @@ from app.schemas.invoice_schema import InvoiceCreate, InvoiceUpdateTotal, Invoic
 from app.services.invoice_service import InvoiceService
 
 router = APIRouter(prefix="/invoice", tags=["Invoice"])
+health_router = APIRouter(tags=["Health"])
 
 
 # ── Service dependency ──────────────────────────────────────────────────────
+@health_router.get("/health")
+def health():
+    return {"status": "ok"}
+
+
 def get_invoice_service(db: Session = Depends(get_db)) -> InvoiceService:
     return InvoiceService(db)
 
