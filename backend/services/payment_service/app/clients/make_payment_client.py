@@ -27,7 +27,7 @@ def notify_payment_succeeded(
     record_id: int,
     payment_intent_id: str,
     attempt_number: int,
-    amount: float,
+    amount: str,
     currency: str,
 ) -> None:
     _post_event(
