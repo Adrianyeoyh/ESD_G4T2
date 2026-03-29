@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from app.repositories.drug_repository import DrugRepository
-from app.schemas.drug_schema import DrugCreate
+from app.schemas.drug_schema import DrugCreate, DrugUpdate
 from utils.exceptions import ConflictError, NotFoundError, ValidationError
 
 class DrugService:
@@ -37,13 +37,29 @@ class DrugService:
         self.db.refresh(drug)
         return drug
 
+    def update_drug(self, drug_id: int, update_data: DrugUpdate):
+        drug = self.get_drug(drug_id)
+
+        if update_data.drug_name != drug.drug_name:
+            existing = self.repo.get_by_name(update_data.drug_name)
+            if existing and existing.drug_id != drug_id:
+                raise ConflictError(
+                    f"Drug with name '{update_data.drug_name}' already exists in catalogue"
+                )
+
+        drug.drug_name = update_data.drug_name
+        drug.quantity = update_data.quantity
+        drug.price = update_data.price
+        self.db.commit()
+        self.db.refresh(drug)
+        return drug
+
     def update_quantity(self, drug_id: int, new_quantity: int):
         if new_quantity < 0:
             raise ValidationError("Quantity must be a non-negative integer")
 
         drug = self.get_drug(drug_id)
         drug.quantity = new_quantity
-        self.repo.save(drug)
         self.db.commit()
         self.db.refresh(drug)
         return drug
