@@ -3,10 +3,10 @@ FROM python:3.12-slim
 WORKDIR /service
 
 COPY requirements /service/requirements
-COPY services/boilerplate_service /service
+COPY composites/make_payment /service
 
-RUN pip install --no-cache-dir -r requirements/boilerplate.txt
+RUN pip install --no-cache-dir -r requirements/make_payment.txt
 
-EXPOSE 5000
+EXPOSE 5005
 
 CMD ["python", "run.py"]
