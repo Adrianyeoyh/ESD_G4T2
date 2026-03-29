@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from app.routers.invoice_router import router as invoice_router
+from app.routers.invoice_router import router as invoice_router, health_router
 from app.config.db import Base, engine
 from app.models import invoice_model  # noqa: F401 — registers model on Base
 from utils.exceptions import AppError
@@ -30,6 +30,7 @@ def create_app() -> FastAPI:
 
     # ── Router registration ─────────────────────────────────────────────────
     app.include_router(invoice_router)
+    app.include_router(health_router)
 
     # ── DB schema management ────────────────────────────────────────────────
     # Safe for dev: create_all is idempotent (skips existing tables).
