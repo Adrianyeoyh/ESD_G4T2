@@ -153,7 +153,14 @@ class MakePaymentService:
             except Exception:
                 logger.exception("Failed to cancel payment %s during compensation", payment_id)
         try:
-            invoice_client.mark_failed(invoice_id)
+            invoice = invoice_client.get_invoice(invoice_id)
+            status = invoice.get("status")
+            if status == "payment_pending":
+                invoice_client.mark_failed(invoice_id)
+            elif status == "draft":
+                # DRAFT→FAILED is not allowed; DRAFT→CANCELLED is.
+                invoice_client.mark_cancelled(invoice_id)
+            # If already failed/cancelled/paid, no action needed.
         except Exception:
-            logger.exception("Failed to mark invoice %s as FAILED during compensation", invoice_id)
+            logger.exception("Failed to compensate invoice %s (may need manual review)", invoice_id)
         logger.error("Compensation executed for invoice %s: %s", invoice_id, reason)

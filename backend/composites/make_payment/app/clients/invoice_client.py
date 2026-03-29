@@ -20,3 +20,8 @@ def mark_paid(invoice_id: int) -> dict:
 def mark_failed(invoice_id: int) -> dict:
     url = f"{settings.INVOICE_SERVICE_URL}/invoice/{invoice_id}/failed"
     return http_request("PUT", url)
+
+
+def mark_cancelled(invoice_id: int) -> dict:
+    url = f"{settings.INVOICE_SERVICE_URL}/invoice/{invoice_id}/cancelled"
+    return http_request("PUT", url)
