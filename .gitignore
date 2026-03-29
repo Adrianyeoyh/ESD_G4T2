@@ -57,9 +57,13 @@ __pycache__
 .project
 .classpath
 
+#AI
+.claude*
+
 # OS
 Thumbs.db
 
 # Application Properties (contains sensitive data)
 application-local.properties
 application-prod.properties
+.claude/settings.local.json

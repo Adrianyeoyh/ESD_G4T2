@@ -1,8 +1,9 @@
 import logging
 from datetime import datetime, timezone
 from app.services import stripe_service
-from app.clients import billing_client
+from app.clients import make_payment_client
 from app.config.db import SessionLocal
+from common.tools import PaymentStatus
 
 logger = logging.getLogger(__name__)
 
@@ -38,22 +39,32 @@ def handle_webhook_event(payload: bytes, sig_header: str) -> None:
         logger.info("webhook_service: ignoring unhandled event type %s", event_type)
 
 
+def _get_payment_or_none(svc, payment_intent_id: str):
+    return svc.repo.get_by_payment_intent_id(payment_intent_id)
+
+
 def _handle_succeeded(payment_intent_id: str, intent: dict) -> None:
     from app.services.payment_service import PaymentService
     db = SessionLocal()
     try:
         svc = PaymentService(db)
-        paid_at = datetime.fromtimestamp(intent.get("created", 0), tz=timezone.utc)
-        payment = svc.mark_succeeded(payment_intent_id=payment_intent_id, paid_at=paid_at)
-        billing_client.notify_payment_succeeded(
+        existing = _get_payment_or_none(svc, payment_intent_id)
+        if existing and existing.status == PaymentStatus.SUCCEEDED:
+            logger.info("webhook_service: payment %s already SUCCEEDED, skipping", payment_intent_id)
+            return
+
+        paid_at = datetime.now(timezone.utc)
+        payment = svc.mark_succeeded(payment_intent_id=payment_intent_id, paid_at=paid_at, commit=False)
+        make_payment_client.notify_payment_succeeded(
             payment_id=payment.payment_id,
             invoice_id=payment.invoice_id,
             record_id=payment.record_id,
             payment_intent_id=payment.payment_intent_id,
             attempt_number=payment.attempt_number,
-            amount=float(payment.amount),
+            amount=str(payment.amount),
             currency=payment.currency,
         )
+        db.commit()
     except Exception:
         db.rollback()
         raise
@@ -66,6 +77,11 @@ def _handle_failed(payment_intent_id: str, intent: dict) -> None:
     db = SessionLocal()
     try:
         svc = PaymentService(db)
+        existing = _get_payment_or_none(svc, payment_intent_id)
+        if existing and existing.status == PaymentStatus.FAILED:
+            logger.info("webhook_service: payment %s already FAILED, skipping", payment_intent_id)
+            return
+
         last_error = intent.get("last_payment_error") or {}
         error_code = last_error.get("code")
         error_message = last_error.get("message")
@@ -73,8 +89,9 @@ def _handle_failed(payment_intent_id: str, intent: dict) -> None:
             payment_intent_id=payment_intent_id,
             error_code=error_code,
             error_message=error_message,
+            commit=False,
         )
-        billing_client.notify_payment_failed(
+        make_payment_client.notify_payment_failed(
             payment_id=payment.payment_id,
             invoice_id=payment.invoice_id,
             record_id=payment.record_id,
@@ -83,6 +100,7 @@ def _handle_failed(payment_intent_id: str, intent: dict) -> None:
             error_code=error_code,
             error_message=error_message,
         )
+        db.commit()
     except Exception:
         db.rollback()
         raise
@@ -95,14 +113,20 @@ def _handle_cancelled(payment_intent_id: str) -> None:
     db = SessionLocal()
     try:
         svc = PaymentService(db)
-        payment = svc.mark_cancelled_by_webhook(payment_intent_id=payment_intent_id)
-        billing_client.notify_payment_cancelled(
+        existing = _get_payment_or_none(svc, payment_intent_id)
+        if existing and existing.status == PaymentStatus.CANCELLED:
+            logger.info("webhook_service: payment %s already CANCELLED, skipping", payment_intent_id)
+            return
+
+        payment = svc.mark_cancelled_by_webhook(payment_intent_id=payment_intent_id, commit=False)
+        make_payment_client.notify_payment_cancelled(
             payment_id=payment.payment_id,
             invoice_id=payment.invoice_id,
             record_id=payment.record_id,
             payment_intent_id=payment.payment_intent_id,
             attempt_number=payment.attempt_number,
         )
+        db.commit()
     except Exception:
         db.rollback()
         raise

@@ -4,7 +4,7 @@ class InvoiceRepository:
     def __init__(self, db):
         self.db = db
 
-    def create(self, record_id: int, total: float) -> Invoice:
+    def create(self, record_id: int, total) -> Invoice:
         invoice = Invoice(record_id=record_id, total=total)
         self.db.add(invoice)
         return invoice
