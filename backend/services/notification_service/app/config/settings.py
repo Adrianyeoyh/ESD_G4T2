@@ -10,11 +10,12 @@ if APP_ENV == "docker":
 else:
     RABBITMQ_HOST = "localhost"
 
-RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "localhost")
 RABBITMQ_PORT = int(os.getenv("RABBITMQ_PORT", "5672"))
 RABBITMQ_USER = os.getenv("RABBITMQ_USER", "guest")
 RABBITMQ_PASS = os.getenv("RABBITMQ_PASS", "guest")
 RABBITMQ_QUEUE = os.getenv("RABBITMQ_QUEUE", "notification.payment.success")
+
+HEALTH_PORT = int(os.getenv("HEALTH_PORT", "5671"))
 
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")

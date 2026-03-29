@@ -6,10 +6,10 @@ This guide covers how to get the full backend running locally using **Docker Com
 
 ## Prerequisites
 
-| Tool | Purpose |
-|---|---|
+| Tool                                                              | Purpose            |
+| ----------------------------------------------------------------- | ------------------ |
 | [Docker Desktop](https://www.docker.com/products/docker-desktop/) | Run all containers |
-| Git | Clone the repo |
+| Git                                                               | Clone the repo     |
 
 Make sure **Docker Desktop is running** before proceeding.
 
@@ -74,6 +74,7 @@ DB_SCHEMA=invoice_schema
 ```
 
 > **`APP_ENV` values explained:**
+>
 > - `docker` — service is running inside Docker Compose; uses container networking (e.g. `DB_HOST=postgres`)
 > - `local` — service is running on your machine directly; `DB_HOST` should be `localhost`
 
@@ -98,10 +99,11 @@ DB_SCHEMA=payment_schema
 
 STRIPE_SECRET_KEY=sk_test_...          # Your Stripe secret key (from Stripe Dashboard)
 STRIPE_WEBHOOK_SECRET=whsec_...        # Your Stripe webhook signing secret
-BILLING_SERVICE_URL=http://localhost:5005  # URL for billing service (adjust if needed)
+make_payment_SERVICE_URL=http://localhost:5005  # URL for make_payment service (adjust if needed)
 ```
 
 > **Getting Stripe keys:**
+>
 > 1. Go to [https://dashboard.stripe.com/test/apikeys](https://dashboard.stripe.com/test/apikeys)
 > 2. Copy the **Secret key** (`sk_test_...`) into `STRIPE_SECRET_KEY`
 > 3. For webhooks, go to **Developers → Webhooks** and grab the signing secret (`whsec_...`) into `STRIPE_WEBHOOK_SECRET`
@@ -118,6 +120,7 @@ docker compose up --build
 ```
 
 This will:
+
 1. Pull the `postgres:16` image and start the database
 2. Wait for Postgres to pass its healthcheck before starting services
 3. Build and start `invoice_service` (port **5003**)
@@ -154,8 +157,8 @@ docker compose logs postgres
 
 ## Service Endpoints
 
-| Service | Port | Base URL |
-|---|---|---|
+| Service         | Port | Base URL                |
+| --------------- | ---- | ----------------------- |
 | Invoice Service | 5003 | `http://localhost:5003` |
 | Payment Service | 5004 | `http://localhost:5004` |
 
@@ -227,11 +230,13 @@ docker compose up --build
 If you prefer to run a service directly on your machine during development:
 
 1. Start **only** the database container:
+
    ```bash
    docker compose up postgres
    ```
 
 2. In the service's `.env`, set:
+
    ```env
    APP_ENV=local
    DB_HOST=localhost
@@ -249,10 +254,10 @@ If you prefer to run a service directly on your machine during development:
 
 ## Troubleshooting
 
-| Problem | Fix |
-|---|---|
-| `connection refused` on DB | Make sure Postgres healthcheck passed — wait a few seconds and retry |
-| Service can't reach `postgres` host | Ensure `APP_ENV=docker` and `DB_HOST=postgres` in `.env` |
-| `STRIPE_SECRET_KEY` missing error | Fill in Stripe keys in `payment_service/.env` |
-| Schema not created | Run `docker compose down -v && docker compose up --build` to reset DB |
-| Port already in use | Stop any local conflicting processes on ports 5432, 5003, or 5004 |
+| Problem                             | Fix                                                                   |
+| ----------------------------------- | --------------------------------------------------------------------- |
+| `connection refused` on DB          | Make sure Postgres healthcheck passed — wait a few seconds and retry  |
+| Service can't reach `postgres` host | Ensure `APP_ENV=docker` and `DB_HOST=postgres` in `.env`              |
+| `STRIPE_SECRET_KEY` missing error   | Fill in Stripe keys in `payment_service/.env`                         |
+| Schema not created                  | Run `docker compose down -v && docker compose up --build` to reset DB |
+| Port already in use                 | Stop any local conflicting processes on ports 5432, 5003, or 5004     |

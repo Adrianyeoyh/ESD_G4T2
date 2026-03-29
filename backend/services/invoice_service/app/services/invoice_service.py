@@ -1,8 +1,13 @@
+import logging
+from decimal import Decimal
+
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from app.repositories.invoice_repository import InvoiceRepository
 from utils.exceptions import NotFoundError, ConflictError, AppError
 from common.tools import InvoiceStatus
+
+logger = logging.getLogger(__name__)
 
 
 class InvoiceService:
@@ -10,14 +15,22 @@ class InvoiceService:
         self.db = db
         self.repo = InvoiceRepository(db)
 
-    def create_invoice(self, record_id: int, total: float):
+    def _commit_and_refresh(self, entity):
+        try:
+            self.db.commit()
+            self.db.refresh(entity)
+        except SQLAlchemyError:
+            self.db.rollback()
+            raise
+
+    def create_invoice(self, record_id: int, total: Decimal):
         existing = self.repo.get_by_record_id(record_id)
         if existing:
             raise ConflictError("Invoice already exists for this record")
 
         invoice = self.repo.create(record_id, total)
-        self.db.commit()
-        self.db.refresh(invoice)
+        self._commit_and_refresh(invoice)
+        logger.info("Created invoice %d for record %d (total=%s)", invoice.invoice_id, record_id, total)
         return invoice
 
     def get_invoice(self, invoice_id: int):
@@ -35,64 +48,52 @@ class InvoiceService:
     def list_invoices(self):
         return self.repo.list_all()
 
+    ALLOWED_TRANSITIONS = {
+        InvoiceStatus.DRAFT: {InvoiceStatus.PAYMENT_PENDING, InvoiceStatus.CANCELLED},
+        InvoiceStatus.PAYMENT_PENDING: {InvoiceStatus.PAID, InvoiceStatus.FAILED, InvoiceStatus.CANCELLED},
+        InvoiceStatus.FAILED: {InvoiceStatus.PAYMENT_PENDING, InvoiceStatus.CANCELLED},
+        InvoiceStatus.PAID: set(),
+        InvoiceStatus.CANCELLED: set(),
+    }
+
+    def _transition(self, invoice, new_status: InvoiceStatus):
+        allowed = self.ALLOWED_TRANSITIONS.get(invoice.status, set())
+        if new_status not in allowed:
+            raise ConflictError(
+                f"Cannot transition from {invoice.status.value} to {new_status.value}"
+            )
+        old_status = invoice.status.value
+        invoice.status = new_status
+        self.repo.save(invoice)
+        self._commit_and_refresh(invoice)
+        logger.info("Invoice %d transitioned %s -> %s", invoice.invoice_id, old_status, new_status.value)
+        return invoice
+
     def mark_payment_pending(self, invoice_id: int):
         invoice = self.get_invoice(invoice_id)
-
-        if invoice.status == InvoiceStatus.PAID:
-            raise ConflictError("Invoice is already paid")
-
-        invoice.status = InvoiceStatus.PAYMENT_PENDING
-        self.repo.save(invoice)
-        self.db.commit()
-        self.db.refresh(invoice)
-        return invoice
+        return self._transition(invoice, InvoiceStatus.PAYMENT_PENDING)
 
     def mark_paid(self, invoice_id: int):
         invoice = self.get_invoice(invoice_id)
-
-        if invoice.status == InvoiceStatus.PAID:
-            raise ConflictError("Invoice is already paid")
-
-        invoice.status = InvoiceStatus.PAID
-        self.repo.save(invoice)
-        self.db.commit()
-        self.db.refresh(invoice)
-        return invoice
+        return self._transition(invoice, InvoiceStatus.PAID)
 
     def mark_failed(self, invoice_id: int):
         invoice = self.get_invoice(invoice_id)
-
-        if invoice.status == InvoiceStatus.PAID:
-            raise ConflictError("Cannot mark a paid invoice as failed")
-
-        invoice.status = InvoiceStatus.FAILED
-        self.repo.save(invoice)
-        self.db.commit()
-        self.db.refresh(invoice)
-        return invoice
+        return self._transition(invoice, InvoiceStatus.FAILED)
 
     def mark_cancelled(self, invoice_id: int):
         invoice = self.get_invoice(invoice_id)
+        return self._transition(invoice, InvoiceStatus.CANCELLED)
 
-        if invoice.status == InvoiceStatus.PAID:
-            raise ConflictError("Cannot cancel a paid invoice")
-
-        invoice.status = InvoiceStatus.CANCELLED
-        self.repo.save(invoice)
-        self.db.commit()
-        self.db.refresh(invoice)
-        return invoice
-
-    def update_total(self, invoice_id: int, total: float):
+    def update_total(self, invoice_id: int, new_total: Decimal):
         invoice = self.get_invoice(invoice_id)
-
-        if invoice.status == InvoiceStatus.PAID:
-            raise ConflictError("Cannot update a paid invoice")
-
-        invoice.total = total
+        if invoice.status in (InvoiceStatus.PAID, InvoiceStatus.CANCELLED):
+            raise ConflictError(
+                f"Cannot update total on a {invoice.status.value} invoice"
+            )
+        invoice.total = new_total
         self.repo.save(invoice)
-        self.db.commit()
-        self.db.refresh(invoice)
+        self._commit_and_refresh(invoice)
         return invoice
 
     def delete_invoice(self, invoice_id: int):
@@ -102,4 +103,9 @@ class InvoiceService:
             raise ConflictError("Cannot delete a paid invoice")
 
         self.repo.delete(invoice)
-        self.db.commit()
+        try:
+            self.db.commit()
+        except SQLAlchemyError:
+            self.db.rollback()
+            raise
+        logger.info("Deleted invoice %d", invoice_id)
