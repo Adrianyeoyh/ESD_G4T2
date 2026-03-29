@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.config.drug_db import get_db
-from app.schemas.drug_schema import DrugCreate, DrugUpdateQuantity, DrugResponse
+from app.schemas.drug_schema import DrugCreate, DrugUpdate, DrugUpdateQuantity, DrugResponse
 from app.services.drug_service import DrugService
 
 router = APIRouter(prefix="/drug", tags=["Drug Catalogue"])
@@ -22,8 +22,22 @@ def get_all_drugs(service: DrugService = Depends(get_drug_service)):
     return service.list_drugs()
 
 
+@router.get("/{drug_id}", response_model=DrugResponse)
+def get_drug(drug_id: int, service: DrugService = Depends(get_drug_service)):
+    return service.get_drug(drug_id)
+
+
 @router.put("/{drug_id}", response_model=DrugResponse)
 def update_drug(
+    drug_id: int,
+    update_data: DrugUpdate,
+    service: DrugService = Depends(get_drug_service),
+):
+    return service.update_drug(drug_id, update_data)
+
+
+@router.patch("/{drug_id}/quantity", response_model=DrugResponse)
+def update_drug_quantity(
     drug_id: int,
     update_data: DrugUpdateQuantity,
     service: DrugService = Depends(get_drug_service),
