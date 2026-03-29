@@ -3,7 +3,6 @@ from datetime import datetime, timezone
 from decimal import Decimal
 import requests
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import SQLAlchemyError
 from app.repositories.payment_repository import PaymentRepository
 from app.services import stripe_service
 from app.config.settings import INVOICE_SERVICE_URL
