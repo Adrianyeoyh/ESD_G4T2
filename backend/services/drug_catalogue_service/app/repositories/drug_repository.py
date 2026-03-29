@@ -25,9 +25,5 @@ class DrugRepository:
         self.db.add(new_drug)
         return new_drug
     
-    def save(self, drug: Drug) -> Drug:
-        self.db.add(drug)
-        return drug
-        
     def delete(self, drug: Drug) -> None:
         self.db.delete(drug)

@@ -1,10 +1,6 @@
 
-from contextlib import asynccontextmanager
-
-from fastapi import FastAPI, Request, APIRouter, Depends, status  
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError
 from app.routers.drug_router import router as drug_router
 from app.config.drug_db import Base, engine
 from app.models import drug_model  # noqa: F401 — registers model on Base
