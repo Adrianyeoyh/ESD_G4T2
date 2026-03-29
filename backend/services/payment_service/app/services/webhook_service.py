@@ -61,7 +61,7 @@ def _handle_succeeded(payment_intent_id: str, intent: dict) -> None:
             record_id=payment.record_id,
             payment_intent_id=payment.payment_intent_id,
             attempt_number=payment.attempt_number,
-            amount=float(payment.amount),
+            amount=str(payment.amount),
             currency=payment.currency,
         )
         db.commit()
