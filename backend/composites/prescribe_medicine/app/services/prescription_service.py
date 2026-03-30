@@ -24,7 +24,22 @@ class PrescribeMedicineService:
         try:
             payload = response.json()
             if isinstance(payload, dict):
-                message = payload.get("message") or payload.get("detail") or message
+                error_field = payload.get("error")
+                error_message = None
+                if isinstance(error_field, dict):
+                    error_message = (
+                        error_field.get("message")
+                        or error_field.get("detail")
+                        or str(error_field)
+                    )
+                elif error_field is not None:
+                    error_message = error_field
+                message = (
+                    payload.get("message")
+                    or payload.get("detail")
+                    or error_message
+                    or message
+                )
         except Exception:
             pass
 
@@ -68,8 +83,8 @@ class PrescribeMedicineService:
 
         for update in reversed(rollback_updates):
             try:
-                response = requests.put(
-                    f"{DRUG_CATALOGUE_URL}/drug/{update['drugId']}",
+                response = requests.patch(
+                    f"{DRUG_CATALOGUE_URL}/drug/{update['drugId']}/quantity",
                     json={"quantity": update["previousQuantity"]},
                     timeout=HTTP_TIMEOUT_SECONDS,
                 )
@@ -158,9 +173,9 @@ class PrescribeMedicineService:
                         f"Insufficient stock for drug {drug_id}. Available: {current_quantity}, Requested: {quantity}"
                     )
 
-                # Step 4a: Update drug stock via PUT
-                update_response = requests.put(
-                    f"{DRUG_CATALOGUE_URL}/drug/{drug_id}",
+                # Step 4a: Update drug stock via PATCH
+                update_response = requests.patch(
+                    f"{DRUG_CATALOGUE_URL}/drug/{drug_id}/quantity",
                     json={"quantity": current_quantity - quantity},
                     timeout=HTTP_TIMEOUT_SECONDS,
                 )
@@ -191,7 +206,7 @@ class PrescribeMedicineService:
                             f"Failed to create prescription for drug {drug_id}",
                         )
                         prescription_payload = prescription_response.json()
-                    except Exception as e:
+                    except RequestException as e:
                         # Log but don't fail if prescription service is unavailable
                         print(f"Warning: Prescription service unavailable: {str(e)}")
                 else:

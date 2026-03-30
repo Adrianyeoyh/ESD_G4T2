@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.config.drug_db import get_db
-from app.schemas.drug_schema import DrugCreate, DrugUpdate, DrugUpdateQuantity, DrugResponse
-from app.services.drug_service import DrugService
+from app.config.drug_catalogue_db import get_db
+from app.schemas.drug_catalogue_schema import DrugCreate, DrugUpdate, DrugUpdateQuantity, DrugResponse
+from app.services.drug_catalogue_service import DrugService
 
 router = APIRouter(prefix="/drug", tags=["Drug Catalogue"])
 
