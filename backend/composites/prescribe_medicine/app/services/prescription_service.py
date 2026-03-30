@@ -50,13 +50,18 @@ class PrescribeMedicineService:
 
         return drugs
 
-    def _get_drug_by_id(self, drugs: list[dict], drug_id: int) -> dict:
+    def _get_drug_by_id(self, drug_id: int) -> dict:
+        response = requests.get(
+            f"{DRUG_CATALOGUE_URL}/drug/{drug_id}",
+            timeout=HTTP_TIMEOUT_SECONDS,
+        )
+        self._raise_for_downstream(response, f"Failed to fetch drug {drug_id}")
 
-        for drug in drugs:
-            if drug.get("drugId") == drug_id:
-                return drug
+        drug = response.json()
+        if not isinstance(drug, dict):
+            raise AppError("Unexpected response from drug catalogue service")
 
-        raise NotFoundError(f"Drug with id {drug_id} not found")
+        return drug
 
     def _restore_stock(self, rollback_updates: list[dict]) -> list[dict]:
         rollback_failures = []
@@ -99,7 +104,7 @@ class PrescribeMedicineService:
 
         try:
             response = requests.get(
-                f"{CLINICAL_RECORDS_URL}{CLINICAL_RECORD_VALIDATE_PATH.format(record_id=record_id)}",
+                f"{CLINICAL_RECORDS_URL}{CLINICAL_RECORD_VALIDATE_PATH.format(recordId=record_id)}",
                 timeout=HTTP_TIMEOUT_SECONDS,
             )
         except RequestException as e:
@@ -133,8 +138,7 @@ class PrescribeMedicineService:
         # Step 2: Get clinical record
         clinical_record = self._get_clinical_record(record_id)
 
-        # Step 3: Get all available drugs
-        drugs = self._get_all_drugs()
+        # Step 3: Validate and fetch requested drugs one by one
         prescribed_items = []
         invoice_total = Decimal("0")
         rollback_updates = []
@@ -146,7 +150,7 @@ class PrescribeMedicineService:
                 quantity = item["quantity"]
                 dosage = item["dosage"]
 
-                drug = self._get_drug_by_id(drugs, drug_id)
+                drug = self._get_drug_by_id(drug_id)
                 current_quantity = int(drug["quantity"])
 
                 if quantity > current_quantity:

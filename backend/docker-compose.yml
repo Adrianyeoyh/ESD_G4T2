@@ -139,7 +139,6 @@ services:
     depends_on:
       - drug_service
       - invoice_service
-      - payment_service
       - record_service
     restart: unless-stopped
     networks:
