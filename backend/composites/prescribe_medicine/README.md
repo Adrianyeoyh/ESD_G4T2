@@ -175,7 +175,7 @@ Example rollback error:
 
 1. **Install dependencies:**
 ```bash
-pip install -r ../../../requirements/prescribe_medicine.txt
+pip install -r ../../requirements/prescribe_medicine.txt
 ```
 
 2. **Configure environment:**

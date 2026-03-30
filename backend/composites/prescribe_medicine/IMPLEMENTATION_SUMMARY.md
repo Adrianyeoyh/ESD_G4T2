@@ -67,7 +67,6 @@ A fully functional composite microservice that orchestrates the medication presc
 - **Files**:
   - [README.md](README.md) - Complete API documentation with examples
   - [ERROR_HANDLING_GUIDE.md](ERROR_HANDLING_GUIDE.md) - Detailed error handling guide
-  - [test_cases.sh](test_cases.sh) - 13 test cases with curl examples
 
 ## Full Service Flow (as implemented)
 
@@ -211,4 +210,3 @@ HTTP_TIMEOUT_SECONDS=8
 
 For detailed information about error handling, see [ERROR_HANDLING_GUIDE.md](ERROR_HANDLING_GUIDE.md).
 For API documentation, see [README.md](README.md).
-For test examples, see [test_cases.sh](test_cases.sh).

@@ -378,17 +378,6 @@ logger.error(
 
 ## Testing Error Scenarios
 
-### Unit Tests
-```python
-def test_insufficient_stock_error():
-    service = PrescribeMedicineService()
-    with pytest.raises(ConflictError) as exc:
-        service.prescribe_medicine(1234, [
-            {"drugId": 1, "quantity": 1000000, "dosage": "test"}
-        ])
-    assert "Insufficient stock" in str(exc.value.message)
-```
-
 ### Integration Tests
 ```bash
 # Test 404 error
