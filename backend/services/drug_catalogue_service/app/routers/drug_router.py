@@ -22,6 +22,11 @@ def get_all_drugs(service: DrugService = Depends(get_drug_service)):
     return service.list_drugs()
 
 
+@router.get("/{drug_id}", response_model=DrugResponse)
+def get_drug(drug_id: int, service: DrugService = Depends(get_drug_service)):
+    return service.get_drug(drug_id)
+
+
 @router.put("/{drug_id}", response_model=DrugResponse)
 def update_drug(
     drug_id: int,

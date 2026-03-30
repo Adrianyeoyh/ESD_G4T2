@@ -128,36 +128,6 @@ curl -X POST http://localhost:5007/prescribe/1234 \
 
 ---
 
-## 🧪 Testing
-
-### Run all test cases
-```bash
-bash test_cases.sh
-```
-
-### Run specific test cases
-```bash
-# Successful prescription
-curl -X POST http://localhost:5007/prescribe/1234 \
-  -H "Content-Type: application/json" \
-  -d '{"items": [{"drugId": 1, "quantity": 2, "dosage": "10mg twice daily"}]}'
-
-# Multiple items
-curl -X POST http://localhost:5007/prescribe/1234 \
-  -H "Content-Type: application/json" \
-  -d '{
-    "items": [
-      {"drugId": 1, "quantity": 2, "dosage": "10mg twice daily"},
-      {"drugId": 2, "quantity": 1, "dosage": "5mg at bedtime"}
-    ]
-  }'
-```
-
-### Run unit tests
-```bash
-pytest tests/test_prescription.py -v
-```
-
 ---
 
 ## 📚 Full Documentation
