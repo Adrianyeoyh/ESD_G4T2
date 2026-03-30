@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from app.models.drug_model import Drug
+from app.models.drug_catalogue_model import Drug
 
 class DrugRepository:
     def __init__(self, db: Session):

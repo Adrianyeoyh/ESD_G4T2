@@ -1,9 +1,9 @@
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from app.routers.drug_router import router as drug_router
-from app.config.drug_db import Base, engine
-from app.models import drug_model  # noqa: F401 — registers model on Base
+from app.routers.drug_catalogue_router import router as drug_catalogue_router
+from app.config.drug_catalogue_db import Base, engine
+from app.models import drug_catalogue_model  # noqa: F401 — registers model on Base
 from utils.exceptions import AppError
 
 def create_app() -> FastAPI:
@@ -28,7 +28,7 @@ def create_app() -> FastAPI:
         )
 
     # ── Router registration ─────────────────────────────────────────────────
-    app.include_router(drug_router)
+    app.include_router(drug_catalogue_router)
 
     # ── DB schema management ────────────────────────────────────────────────
     # Safe for dev: create_all is idempotent (skips existing tables).

@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
-from app.repositories.drug_repository import DrugRepository
-from app.schemas.drug_schema import DrugCreate, DrugUpdate
+from app.repositories.drug_catalogue_repository import DrugRepository
+from app.schemas.drug_catalogue_schema import DrugCreate, DrugUpdate
 from utils.exceptions import ConflictError, NotFoundError, ValidationError
 
 class DrugService:
