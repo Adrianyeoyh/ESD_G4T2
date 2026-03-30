@@ -78,6 +78,29 @@ class PrescribeMedicineService:
 
         return drug
 
+    def _create_prescription(self, record_id: int, drug_id: int, quantity: int, dosage: str) -> dict:
+        service_url = (PRESCRIPTION_SERVICE_URL or "").strip()
+        if not service_url:
+            raise AppError("Prescription service URL is not configured")
+
+        response = requests.post(
+            f"{service_url}/prescription",
+            json={
+                "recordId": record_id,
+                "drugId": drug_id,
+                "quantity": quantity,
+                "dosage": dosage,
+            },
+            timeout=HTTP_TIMEOUT_SECONDS,
+        )
+        self._raise_for_downstream(response, f"Failed to create prescription for drug {drug_id}")
+
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise AppError("Unexpected response from prescription service")
+
+        return payload
+
     def _restore_stock(self, rollback_updates: list[dict]) -> list[dict]:
         rollback_failures = []
 
@@ -187,37 +210,12 @@ class PrescribeMedicineService:
                 })
 
                 # Step 6: Create prescription record via POST
-                # If prescription service is not available, skip this step
-                prescription_payload = None
-                if PRESCRIPTION_SERVICE_URL:
-                    try:
-                        prescription_response = requests.post(
-                            f"{PRESCRIPTION_SERVICE_URL}/prescription",
-                            json={
-                                "recordId": record_id,
-                                "drugId": drug_id,
-                                "quantity": quantity,
-                                "dosage": dosage,
-                            },
-                            timeout=HTTP_TIMEOUT_SECONDS,
-                        )
-                        self._raise_for_downstream(
-                            prescription_response,
-                            f"Failed to create prescription for drug {drug_id}",
-                        )
-                        prescription_payload = prescription_response.json()
-                    except RequestException as e:
-                        # Log but don't fail if prescription service is unavailable
-                        print(f"Warning: Prescription service unavailable: {str(e)}")
-                else:
-                    # Generate a mock prescription if service not configured
-                    prescription_payload = {
-                        "prescriptionId": f"RX-{record_id}-{drug_id}",
-                        "recordId": record_id,
-                        "drugId": drug_id,
-                        "quantity": quantity,
-                        "dosage": dosage
-                    }
+                prescription_payload = self._create_prescription(
+                    record_id=record_id,
+                    drug_id=drug_id,
+                    quantity=quantity,
+                    dosage=dosage,
+                )
                 item_total = Decimal(str(drug["price"])) * Decimal(quantity)
                 invoice_total += item_total
 
