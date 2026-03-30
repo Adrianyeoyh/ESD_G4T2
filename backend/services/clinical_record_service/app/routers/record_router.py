@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Body, Depends, Path
 from sqlalchemy.orm import Session
 
 from app.config.record_db import get_db
@@ -34,27 +34,27 @@ def get_all_records(service: RecordService = Depends(get_record_service)):
 # ✅ GET specific record (THIS matches your diagram)
 @router.get("/{recordId}", response_model=RecordResponse)
 def get_record(
-    recordId: int,
+    record_id: int = Path(..., alias="recordId"),
     service: RecordService = Depends(get_record_service),
 ):
-    return service.get_record_by_id(recordId)
+    return service.get_record_by_id(record_id)
 
 
 # ✅ UPDATE record
 @router.put("/{recordId}", response_model=RecordResponse)
 def update_record(
-    recordId: int,
-    update_data: RecordUpdate,
+    record_id: int = Path(..., alias="recordId"),
+    update_data: RecordUpdate = Body(...),
     service: RecordService = Depends(get_record_service),
 ):
-    return service.update_record(recordId, update_data)
+    return service.update_record(record_id, update_data)
 
 
 # ✅ DELETE record
 @router.delete("/{recordId}", status_code=204)
 def delete_record(
-    recordId: int,
+    record_id: int = Path(..., alias="recordId"),
     service: RecordService = Depends(get_record_service),
 ):
-    service.delete_record(recordId)
+    service.delete_record(record_id)
     return None
