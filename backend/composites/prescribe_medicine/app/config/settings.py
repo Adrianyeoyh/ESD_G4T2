@@ -11,7 +11,7 @@ PRESCRIPTION_SERVICE_URL = os.getenv("PRESCRIPTION_SERVICE_URL", "http://localho
 CLINICAL_RECORDS_URL = os.getenv("CLINICAL_RECORDS_URL", "http://localhost:5006")
 CLINICAL_RECORD_VALIDATE_PATH = os.getenv(
 	"CLINICAL_RECORD_VALIDATE_PATH",
-	"/record/{record_id}",
+	"/record/{recordId}",
 )
 
 CLINICAL_RECORDS_REQUIRED = os.getenv("CLINICAL_RECORDS_REQUIRED", "false").lower() == "true"
