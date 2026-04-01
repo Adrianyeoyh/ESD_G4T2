@@ -107,7 +107,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Smoke-test all API endpoints across drug, invoice, and payment services."
     )
-    parser.add_argument("--drug-base-url", default="http://localhost:5001")
+    parser.add_argument("--drug-base-url", default="http://localhost:5081")
     parser.add_argument("--invoice-base-url", default="http://localhost:5003")
     parser.add_argument("--payment-base-url", default="http://localhost:5004")
     parser.add_argument(
