@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.config.drug_db import get_db
-from app.schemas.drug_schema import DrugCreate, DrugUpdateQuantity, DrugResponse
+from app.schemas.drug_schema import DrugCreate, DrugUpdate, DrugResponse
 from app.services.drug_service import DrugService
 
 router = APIRouter(prefix="/drug", tags=["Drug Catalogue"])
@@ -25,10 +25,18 @@ def get_all_drugs(service: DrugService = Depends(get_drug_service)):
 @router.put("/{drug_id}", response_model=DrugResponse)
 def update_drug(
     drug_id: int,
-    update_data: DrugUpdateQuantity,
+    update_data: DrugUpdate,
     service: DrugService = Depends(get_drug_service),
 ):
-    return service.update_quantity(drug_id, update_data.quantity)
+    return service.update_drug(
+        drug_id,
+        update_data.quantity,
+        update_data.price,
+        update_data.purpose,
+        update_data.recommended_dosage,
+        update_data.remarks,
+        set(update_data.model_fields_set),
+    )
 
 
 @router.delete("/{drug_id}", status_code=204)

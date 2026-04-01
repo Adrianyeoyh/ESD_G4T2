@@ -1,15 +1,14 @@
-
-from contextlib import asynccontextmanager
-
-from fastapi import FastAPI, Request, APIRouter, Depends, status
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError
-from app.routers.drug_router import router as drug_router
+
 from app.config.drug_db import Base, engine
-from app.models import drug_model  # noqa: F401 — registers model on Base
+from app.config.settings import DB_SCHEMA
+from app.models import drug_model  # noqa: F401 - registers model on Base
+from app.routers.drug_router import router as drug_router
 from utils.exceptions import AppError
+
 
 def create_app() -> FastAPI:
     app = FastAPI(
@@ -39,12 +38,24 @@ def create_app() -> FastAPI:
             content={"success": False, "data": None, "error": "Internal server error"},
         )
 
-    # ── Router registration ─────────────────────────────────────────────────
     app.include_router(drug_router)
 
-    # ── DB schema management ────────────────────────────────────────────────
     # Safe for dev: create_all is idempotent (skips existing tables).
     Base.metadata.create_all(bind=engine)
+
+    # Backfill new optional columns for local databases that already had the table.
+    with engine.begin() as conn:
+        conn.execute(
+            text(f'ALTER TABLE "{DB_SCHEMA}"."drug" ADD COLUMN IF NOT EXISTS "purpose" VARCHAR(255)')
+        )
+        conn.execute(
+            text(
+                f'ALTER TABLE "{DB_SCHEMA}"."drug" ADD COLUMN IF NOT EXISTS "recommendedDosage" VARCHAR(255)'
+            )
+        )
+        conn.execute(
+            text(f'ALTER TABLE "{DB_SCHEMA}"."drug" ADD COLUMN IF NOT EXISTS "remarks" VARCHAR(500)')
+        )
 
     return app
 
