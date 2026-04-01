@@ -63,7 +63,7 @@ services:
     environment:
       APP_ENV: docker
     ports:
-      - "5001:5001"
+      - "5081:5001"
     depends_on:
       postgres:
         condition: service_healthy
@@ -80,10 +80,60 @@ services:
       - ./services/payment_service/.env
     environment:
       APP_ENV: docker
+      BILLING_SERVICE_URL: http://make_payment_service:5005
+      INVOICE_SERVICE_URL: http://invoice_service:5003
+      MAKE_PAYMENT_SERVICE_URL: http://make_payment_service:5005
     ports:
       - "5004:5004"
     depends_on:
       postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - esd-net
+
+  make_payment_service:
+    build:
+      context: .
+      dockerfile: composites/make_payment/Dockerfile
+    container_name: make_payment_service
+    environment:
+      APP_ENV: docker
+      INVOICE_SERVICE_URL: http://invoice_service:5003
+      PAYMENT_SERVICE_URL: http://payment_service:5004
+      RECORDS_SERVICE_URL: https://personal-iipxahjd.outsystemscloud.com/ClinicalRecordServices/rest/RecordsAPI
+      PATIENT_SERVICE_URL: https://personal-wv4mxqur.outsystemscloud.com/PatientService/rest/PatientAPI
+      INTERNAL_API_KEY: changeme-dev-key
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: guest
+      RABBITMQ_PASS: guest
+      RABBITMQ_QUEUE: notification.payment.success
+    ports:
+      - "5005:5005"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      invoice_service:
+        condition: service_started
+      payment_service:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - esd-net
+
+  notification_service:
+    build:
+      context: .
+      dockerfile: services/notification_service/Dockerfile
+    container_name: notification_service
+    env_file:
+      - ./services/notification_service/.env
+    environment:
+      APP_ENV: docker
+      RABBITMQ_HOST: rabbitmq
+    depends_on:
+      rabbitmq:
         condition: service_healthy
     restart: unless-stopped
     networks:

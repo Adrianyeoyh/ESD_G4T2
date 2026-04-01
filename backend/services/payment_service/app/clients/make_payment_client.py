@@ -2,7 +2,7 @@ import logging
 
 import requests
 
-from app.config.settings import make_payment_SERVICE_URL, INTERNAL_API_KEY
+from app.config.settings import MAKE_PAYMENT_SERVICE_URL, INTERNAL_API_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +14,7 @@ def _post_event(event_type: str, payload: dict) -> None:
     returns 5xx and Stripe retries delivery.
     """
     body = {"eventType": event_type, **payload}
-    url = f"{make_payment_SERVICE_URL}/make_payment/payment-events"
+    url = f"{MAKE_PAYMENT_SERVICE_URL}/make_payment/payment-events"
     headers = {"X-Internal-Api-Key": INTERNAL_API_KEY}
     response = requests.post(url, json=body, headers=headers, timeout=5)
     response.raise_for_status()

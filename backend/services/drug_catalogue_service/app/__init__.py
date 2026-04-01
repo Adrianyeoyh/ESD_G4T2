@@ -1,7 +1,8 @@
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, APIRouter, Depends, status  
+from fastapi import FastAPI, Request, APIRouter, Depends, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -15,6 +16,13 @@ def create_app() -> FastAPI:
         title="Drug Catalogue Service",
         version="1.0.0",
         description="Atomic microservice for managing drug inventory",
+    )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:5173"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
     @app.exception_handler(AppError)
