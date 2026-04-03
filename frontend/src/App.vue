@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, ref } from 'vue'
 import axios from 'axios'
 import { loadStripe } from '@stripe/stripe-js'
+import { useRoute, useRouter } from 'vue-router'
 import {
   CreditCard,
   FileText,
@@ -11,6 +12,7 @@ import {
   UserPlus,
   Wallet,
 } from 'lucide-vue-next'
+import ConsultationReview from './views/ConsultationReview.vue'
 
 const ENDPOINTS = {
   drugsPrimary: 'http://localhost:5081/drug',
@@ -18,9 +20,13 @@ const ENDPOINTS = {
   billing: 'http://localhost:5005/make_payment/initiate-payment',
   billingHealth: 'http://localhost:5005/health',
   records: 'https://personal-iipxahjd.outsystemscloud.com/ClinicalRecordServices/rest/RecordsAPI/',
+  recordsByPatient:
+    'https://personal-iipxahjd.outsystemscloud.com/ClinicalRecordServices/rest/RecordsAPI/record/',
+  prescriptionByPatientBase:
+    import.meta.env.VITE_PRESCRIPTION_BY_PATIENT_BASE || 'http://localhost:5006',
   consultationBase:
     import.meta.env.VITE_CONSULTATION_BASE ||
-    'https://personal-iipxahjd.outsystemscloud.com/ClinicalRecordServices/rest/RecordsAPI',
+    'https://personal-wv4mxqur.outsystemscloud.com/RecordVisitNotes/rest/ConsultationAPI',
   patientRegistration:
     'https://personal-wv4mxqur.outsystemscloud.com/PatientService/rest/PatientAPI/patient',
 }
@@ -28,7 +34,12 @@ const ENDPOINTS = {
 const STRIPE_PUBLISHABLE_KEY =
   'pk_test_51TEPPgIzFKBN2ZMzfqH1p0EdpZa9vVTC4swDFcrucVz92XxrODFkQkHc26zgHg4kzEcECKKklUCcef94CRK1NjOB00pHJb9cDX'
 
+const route = useRoute()
+const router = useRouter()
+const CONSULTATION_DRAFT_KEY = 'consultation:pending-draft'
+
 const activeView = ref('inventory')
+const isConsultationReviewPage = computed(() => route.name === 'consultation-review')
 
 const inventory = ref([])
 const records = ref([])
@@ -36,6 +47,15 @@ const loadingInventory = ref(false)
 const loadingRecords = ref(false)
 const inventoryError = ref('')
 const recordsError = ref('')
+
+const patientHistoryForm = ref({
+  patientId: '',
+})
+const loadingPatientHistory = ref(false)
+const patientHistoryError = ref('')
+const patientHistoryPrescriptionError = ref('')
+const patientHistoryRecords = ref([])
+const patientHistoryPrescriptions = ref([])
 
 const patientModalOpen = ref(false)
 const submittingPatient = ref(false)
@@ -68,14 +88,133 @@ const outsystemsSyncCounter = ref(0)
 const outsystemsSyncing = computed(() => outsystemsSyncCounter.value > 0)
 
 const consultationForm = ref({
-  nric: '',
+  patientId: '',
   visitNotes: '',
 })
+const consultationDrugSearch = ref('')
+const consultationDrugSelections = ref({})
 const submittingConsultation = ref(false)
 const consultationError = ref('')
 const consultationSuccess = ref('')
 const consultationNewRecord = ref(null)
+const consultationRecordId = ref(null)
 const consultationHistory = ref([])
+
+const normalizeConsultationDrug = (drug, idx) => ({
+  id: Number(drug.drugId ?? drug.id ?? drug.Id ?? idx + 1),
+  name:
+    String(
+      drug.drugName ?? drug.name ?? drug.DrugName ?? drug.drug_name ?? 'Unnamed Drug',
+    ).trim() || 'Unnamed Drug',
+  quantity: Math.max(0, Number(drug.quantity ?? drug.stock ?? drug.Quantity ?? 0)),
+  price: Number(drug.price ?? drug.Price ?? 0),
+  raw: drug,
+})
+
+const consultationDrugCatalogue = computed(() => inventory.value.map(normalizeConsultationDrug))
+
+const consultationFilteredDrugs = computed(() => {
+  const search = String(consultationDrugSearch.value || '').trim().toLowerCase()
+  if (!search) {
+    return consultationDrugCatalogue.value
+  }
+
+  return consultationDrugCatalogue.value.filter((drug) => {
+    const normalizedName = String(drug.name || '').toLowerCase()
+    const nameTokens = normalizedName.split(/\s+/).filter(Boolean)
+    const idPrefixMatch = String(drug.id).toLowerCase().startsWith(search)
+    const namePrefixMatch =
+      normalizedName.startsWith(search) ||
+      nameTokens.some((token) => token.startsWith(search))
+
+    return namePrefixMatch || idPrefixMatch
+  })
+})
+
+const consultationSelectedDrugs = computed(() =>
+  consultationDrugCatalogue.value
+    .map((drug) => ({
+      ...drug,
+      selectedQuantity: Math.max(0, Number(consultationDrugSelections.value[drug.id] ?? 0)),
+    }))
+    .filter((drug) => drug.selectedQuantity > 0),
+)
+
+const consultationSelectedDrugCount = computed(() =>
+  consultationSelectedDrugs.value.reduce((total, drug) => total + drug.selectedQuantity, 0),
+)
+
+const consultationSelectedDrugTotal = computed(() =>
+  consultationSelectedDrugs.value.reduce(
+    (total, drug) => total + drug.selectedQuantity * Number(drug.price || 0),
+    0,
+  ),
+)
+
+const syncConsultationDrugSelections = () => {
+  const nextSelections = {}
+
+  for (const drug of consultationDrugCatalogue.value) {
+    const currentQuantity = Number(consultationDrugSelections.value[drug.id] ?? 0)
+    nextSelections[drug.id] = Math.max(
+      0,
+      Math.min(Number.isFinite(currentQuantity) ? currentQuantity : 0, drug.quantity),
+    )
+  }
+
+  consultationDrugSelections.value = nextSelections
+}
+
+const getConsultationDrugQuantity = (drugId) => Number(consultationDrugSelections.value[drugId] ?? 0)
+
+const setConsultationDrugQuantity = (drugId, rawValue) => {
+  const drug = consultationDrugCatalogue.value.find((item) => item.id === Number(drugId))
+  if (!drug) {
+    return
+  }
+
+  const parsedQuantity = Number.parseInt(String(rawValue ?? ''), 10)
+  const nextQuantity = Number.isFinite(parsedQuantity) ? parsedQuantity : 0
+
+  consultationDrugSelections.value = {
+    ...consultationDrugSelections.value,
+    [drug.id]: Math.max(0, Math.min(nextQuantity, drug.quantity)),
+  }
+}
+
+const composeConsultationVisitNotes = (visitNotes, drugs) => {
+  const trimmedNotes = String(visitNotes || '').trim()
+  if (!drugs.length) {
+    return trimmedNotes
+  }
+
+  const drugSummary = drugs
+    .map((drug) => `- ${drug.name} x${drug.selectedQuantity} (available ${drug.quantity})`)
+    .join('\n')
+
+  return [trimmedNotes, 'Prescribed Drugs:', drugSummary].filter(Boolean).join('\n\n')
+}
+
+const buildConsultationDraft = () => {
+  const patientId = String(consultationForm.value.patientId || '').trim()
+  const visitNotes = String(consultationForm.value.visitNotes || '').trim()
+  const drugs = consultationSelectedDrugs.value.map((drug) => ({
+    drugId: drug.id,
+    name: drug.name,
+    quantity: drug.selectedQuantity,
+    availableQuantity: drug.quantity,
+    price: drug.price,
+  }))
+
+  return {
+    patientId,
+    visitNotes,
+    drugs,
+    selectedDrugCount: consultationSelectedDrugCount.value,
+    selectedDrugTotal: consultationSelectedDrugTotal.value,
+    composedVisitNotes: composeConsultationVisitNotes(visitNotes, drugs),
+  }
+}
 
 const dispensingRecordId = ref(null)
 const dispenseError = ref('')
@@ -90,6 +229,7 @@ const billingSuccess = ref('')
 const navItems = [
   { key: 'inventory', label: 'Inventory', icon: Pill },
   { key: 'records', label: 'Records', icon: FileText },
+  { key: 'history', label: 'Patient History', icon: FileText },
   { key: 'payments', label: 'Payments', icon: CreditCard },
 ]
 
@@ -129,7 +269,7 @@ const normalizedRecords = computed(() =>
     return {
       ...record,
       Id: Number(id),
-      patientId: patientId !== null ? Number(patientId) : null,
+      patientId: patientId !== null ? String(patientId).trim() : null,
       date,
       VisitNotes: String(visitNotes),
       isClosed,
@@ -159,6 +299,116 @@ const normalizeArrayResponse = (payload) => {
   return []
 }
 
+const normalizeObjectArrayResponse = (payload) => {
+  if (Array.isArray(payload)) {
+    return payload
+  }
+
+  for (const key of ['data', 'items', 'records', 'result', 'value']) {
+    if (Array.isArray(payload?.[key])) {
+      return payload[key]
+    }
+  }
+
+  return []
+}
+
+const parseErrorMessage = (error, fallbackMessage) => {
+  if (String(error?.message || '').toLowerCase() === 'network error') {
+    return `${fallbackMessage} Service may be down or blocked by CORS.`
+  }
+
+  const data = error?.response?.data
+  if (typeof data === 'string' && data.trim()) {
+    return data.trim()
+  }
+
+  for (const key of ['message', 'error', 'details']) {
+    const candidate = data?.[key]
+    if (typeof candidate === 'string' && candidate.trim()) {
+      return candidate.trim()
+    }
+  }
+
+  return error?.message || fallbackMessage
+}
+
+const normalizePrescriptionRows = (rows) =>
+  rows.map((row, idx) => ({
+    id: row.id ?? row.Id ?? row.prescriptionId ?? row.PrescriptionId ?? idx + 1,
+    drugName:
+      row.drugName ?? row.DrugName ?? row.medicationName ?? row.MedicationName ?? 'N/A',
+    quantity: row.quantity ?? row.Quantity ?? row.qty ?? row.Qty ?? 'N/A',
+    dosage: row.dosage ?? row.Dosage ?? row.instructions ?? row.Instructions ?? 'N/A',
+    date: row.date ?? row.Date ?? row.createdAt ?? row.CreatedAt ?? 'N/A',
+    raw: row,
+  }))
+
+const fetchPrescriptionsByPatientId = async (patientId) => {
+  const base = ENDPOINTS.prescriptionByPatientBase.replace(/\/$/, '')
+  const candidates = [
+    `${base}/prescription/patient/${patientId}`,
+    `${base}/prescriptions/patient/${patientId}`,
+    `${base}/prescription/${patientId}`,
+  ]
+
+  let lastError = null
+  for (const url of candidates) {
+    try {
+      const response = await axios.get(url)
+      return normalizeObjectArrayResponse(response.data)
+    } catch (error) {
+      lastError = error
+    }
+  }
+
+  throw lastError || new Error('Unable to retrieve prescriptions for this patient.')
+}
+
+const fetchPatientHistory = async () => {
+  patientHistoryError.value = ''
+  patientHistoryPrescriptionError.value = ''
+  patientHistoryRecords.value = []
+  patientHistoryPrescriptions.value = []
+
+  const patientId = String(patientHistoryForm.value.patientId || '').trim()
+  if (!patientId || patientId.length !== 9) {
+    patientHistoryError.value = 'Please enter a valid 9-character patientId.'
+    return
+  }
+
+  loadingPatientHistory.value = true
+  beginOutsystemsSync()
+
+  try {
+    const [recordsResult, prescriptionResult] = await Promise.allSettled([
+      axios.get(`${ENDPOINTS.recordsByPatient}${encodeURIComponent(String(patientId))}`),
+      fetchPrescriptionsByPatientId(patientId),
+    ])
+
+    if (recordsResult.status === 'fulfilled') {
+      patientHistoryRecords.value = normalizeObjectArrayResponse(recordsResult.value.data)
+    } else {
+      patientHistoryError.value = parseErrorMessage(
+        recordsResult.reason,
+        'Unable to fetch clinical records for this patient.',
+      )
+    }
+
+    if (prescriptionResult.status === 'fulfilled') {
+      patientHistoryPrescriptions.value = normalizePrescriptionRows(prescriptionResult.value)
+    } else {
+      patientHistoryPrescriptionError.value = parseErrorMessage(
+        prescriptionResult.reason,
+        'Unable to fetch prescriptions for this patient.',
+      )
+    }
+  } finally {
+    loadingPatientHistory.value = false
+    endOutsystemsSync()
+  }
+}
+
 const beginOutsystemsSync = () => {
   outsystemsSyncCounter.value += 1
 }
@@ -181,6 +431,7 @@ const fetchDrugs = async () => {
 
     const rows = normalizeArrayResponse(response.data)
     inventory.value = rows
+    syncConsultationDrugSelections()
 
     if (!rows.length) {
       inventoryError.value = 'Drug service connected, but no inventory rows were returned.'
@@ -217,47 +468,28 @@ const fetchRecords = async () => {
 const submitConsultation = async () => {
   consultationError.value = ''
   consultationSuccess.value = ''
+  consultationNewRecord.value = null
+  consultationRecordId.value = null
+  consultationHistory.value = []
 
-  const nric = String(consultationForm.value.nric || '').trim()
+  const patientId = String(consultationForm.value.patientId || '').trim()
   const visitNotes = String(consultationForm.value.visitNotes || '').trim()
-  if (!nric || !visitNotes) {
-    consultationError.value = 'NRIC and visitNotes are required.'
+  if (!patientId || !visitNotes) {
+    consultationError.value = 'patientId and visitNotes are required.'
     return
   }
 
+  const draft = buildConsultationDraft()
+
   submittingConsultation.value = true
-  beginOutsystemsSync()
-
   try {
-    const response = await fetch(
-      `${ENDPOINTS.consultationBase.replace(/\/$/, '')}/consultation/${encodeURIComponent(nric)}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ visitNotes }),
-      },
-    )
-    if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(errorText || `Consultation failed (${response.status})`)
-    }
-
-    // Consultation endpoint returns JSON.
-    const payload = await response.json()
-    consultationNewRecord.value = payload?.newRecord || null
-    consultationHistory.value = Array.isArray(payload?.history) ? payload.history : []
-    consultationSuccess.value = 'Consultation created successfully.'
-    consultationForm.value.visitNotes = ''
-    await fetchRecords()
-    await loadBillingRows()
+    sessionStorage.setItem(CONSULTATION_DRAFT_KEY, JSON.stringify(draft))
+    await router.push({ name: 'consultation-review' })
   } catch (error) {
     consultationError.value =
-      error?.message || 'Unable to submit consultation right now.'
+      error?.message || 'Unable to open the consultation review page.'
   } finally {
     submittingConsultation.value = false
-    endOutsystemsSync()
   }
 }
 
@@ -274,7 +506,7 @@ const dispenseRecord = async (record) => {
 
   const payload = {
     Id: Number(record.Id),
-    patientId: Number(record.patientId),
+    patientId: String(record.patientId || '').trim(),
     date: String(record.date || '').slice(0, 10),
     VisitNotes: String(record.VisitNotes || ''),
     isClosed: true,
@@ -671,7 +903,8 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-[#F8F9FA] text-[#202124]">
+  <ConsultationReview v-if="isConsultationReviewPage" />
+  <div v-else class="min-h-screen bg-[#F8F9FA] text-[#202124]">
     <div class="mx-auto flex min-h-screen max-w-[1440px]">
       <aside class="w-72 border-r border-[#E8EAED] bg-white px-6 py-8">
         <div class="mb-10 flex items-center gap-3">
@@ -778,15 +1011,78 @@ onMounted(async () => {
             </p>
             <div class="mt-4 grid gap-3 md:grid-cols-2">
               <input
-                v-model="consultationForm.nric"
+                v-model="consultationForm.patientId"
                 class="rounded-lg border border-[#DADCE0] px-3 py-2 text-sm"
-                placeholder="Patient NRIC"
+                placeholder="Patient ID"
               />
               <input
                 v-model="consultationForm.visitNotes"
                 class="rounded-lg border border-[#DADCE0] px-3 py-2 text-sm"
                 placeholder="visitNotes"
               />
+            </div>
+            <div class="mt-5 rounded-2xl border border-[#E8EAED] bg-[#F8F9FA] p-4">
+              <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <h5 class="text-base font-semibold">Drug Catalogue</h5>
+                  <p class="text-sm text-[#5f6368]">
+                    Search the catalogue and set the quantity for each drug before review.
+                  </p>
+                </div>
+                <div class="w-full md:max-w-sm">
+                  <input
+                    v-model="consultationDrugSearch"
+                    class="w-full rounded-lg border border-[#DADCE0] bg-white px-3 py-2 text-sm"
+                    placeholder="Search drugs by name or ID"
+                  />
+                </div>
+              </div>
+
+              <div class="mt-4">
+                <p v-if="loadingInventory" class="text-sm text-[#5f6368]">Loading drug catalogue...</p>
+                <p v-else-if="inventoryError" class="rounded-lg bg-[#FDECEC] p-3 text-sm text-[#B3261E]">
+                  {{ inventoryError }}
+                </p>
+                <p v-else-if="consultationFilteredDrugs.length === 0" class="text-sm text-[#5f6368]">
+                  No drugs match your search.
+                </p>
+                <div v-else class="overflow-hidden rounded-xl border border-[#E8EAED] bg-white">
+                  <table class="min-w-full divide-y divide-[#E8EAED] text-sm">
+                    <thead class="bg-[#F8F9FA] text-left text-[#5f6368]">
+                      <tr>
+                        <th class="px-4 py-3 font-medium">Drug</th>
+                        <th class="px-4 py-3 font-medium">Available</th>
+                        <th class="px-4 py-3 font-medium">Price (SGD)</th>
+                        <th class="px-4 py-3 font-medium">Quantity</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-[#F1F3F4] bg-white">
+                      <tr v-for="drug in consultationFilteredDrugs" :key="drug.id" class="hover:bg-[#F8F9FA]">
+                        <td class="px-4 py-3 font-medium text-[#202124]">{{ drug.name }}</td>
+                        <td class="px-4 py-3">{{ drug.quantity }}</td>
+                        <td class="px-4 py-3">{{ Number(drug.price || 0).toFixed(2) }}</td>
+                        <td class="px-4 py-3">
+                          <input
+                            :value="getConsultationDrugQuantity(drug.id)"
+                            type="number"
+                            min="0"
+                            :max="drug.quantity"
+                            step="1"
+                            class="w-24 rounded-lg border border-[#DADCE0] px-3 py-2 text-sm"
+                            @input="setConsultationDrugQuantity(drug.id, $event.target.value)"
+                          />
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="mt-4 flex flex-wrap gap-4 text-sm text-[#5f6368]">
+                <span>Selected drugs: {{ consultationSelectedDrugs.length }}</span>
+                <span>Total units: {{ consultationSelectedDrugCount }}</span>
+                <span>Total value: SGD {{ consultationSelectedDrugTotal.toFixed(2) }}</span>
+              </div>
             </div>
             <button
               class="mt-4 rounded-lg bg-[#1a73e8] px-4 py-2 text-sm font-medium text-white hover:bg-[#1765cc] disabled:opacity-60"
@@ -803,6 +1099,9 @@ onMounted(async () => {
 
             <div v-if="consultationNewRecord || consultationHistory.length" class="mt-4 rounded-lg border border-[#E8EAED] bg-[#F8F9FA] p-4">
               <p class="text-xs font-semibold uppercase tracking-[0.12em] text-[#5f6368]">Consultation Response</p>
+              <p v-if="consultationRecordId !== null" class="mt-2 text-sm text-[#202124]">
+                Record ID: {{ consultationRecordId }}
+              </p>
               <p v-if="consultationNewRecord" class="mt-2 text-sm text-[#202124]">
                 New Record: {{ JSON.stringify(consultationNewRecord) }}
               </p>
@@ -841,6 +1140,97 @@ onMounted(async () => {
                 dispensed and billing is ready.
               </p>
             </article>
+          </div>
+        </section>
+
+        <section v-if="activeView === 'history'" class="space-y-5">
+          <div class="rounded-2xl border border-[#E8EAED] bg-white p-6">
+            <div class="mb-2 flex items-center gap-2">
+              <FileText class="h-5 w-5 text-[#1a73e8]" />
+              <h3 class="text-lg font-semibold">Patient History</h3>
+            </div>
+            <p class="text-sm text-[#5f6368]">
+              Retrieves all clinical records and prescriptions by patientId.
+            </p>
+
+            <div class="mt-4 flex flex-col gap-3 md:flex-row md:items-center">
+              <input
+                v-model="patientHistoryForm.patientId"
+                class="w-full rounded-lg border border-[#DADCE0] px-3 py-2 text-sm md:max-w-xs"
+                placeholder="Enter patientId"
+              />
+              <button
+                class="inline-flex items-center justify-center gap-2 rounded-lg bg-[#1a73e8] px-4 py-2 text-sm font-medium text-white hover:bg-[#1765cc] disabled:opacity-60"
+                :disabled="loadingPatientHistory"
+                @click="fetchPatientHistory"
+              >
+                <LoaderCircle v-if="loadingPatientHistory" class="h-4 w-4 animate-spin" />
+                Get Patient History
+              </button>
+            </div>
+
+            <p v-if="patientHistoryError" class="mt-4 rounded-lg bg-[#FDECEC] p-3 text-sm text-[#B3261E]">
+              {{ patientHistoryError }}
+            </p>
+          </div>
+
+          <div class="grid gap-5 xl:grid-cols-2">
+            <div class="rounded-2xl border border-[#E8EAED] bg-white p-6">
+              <h4 class="text-base font-semibold">Clinical Records</h4>
+              <p v-if="loadingPatientHistory" class="mt-3 text-sm text-[#5f6368]">Loading records...</p>
+              <p v-else-if="patientHistoryRecords.length === 0" class="mt-3 text-sm text-[#5f6368]">
+                No records found for this patientId.
+              </p>
+              <div v-else class="mt-4 overflow-hidden rounded-xl border border-[#E8EAED]">
+                <table class="min-w-full divide-y divide-[#E8EAED] text-sm">
+                  <thead class="bg-[#F8F9FA]">
+                    <tr class="text-left text-[#5f6368]">
+                      <th class="px-4 py-3 font-medium">Record ID</th>
+                      <th class="px-4 py-3 font-medium">Visit Date</th>
+                      <th class="px-4 py-3 font-medium">Visit Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-[#F1F3F4] bg-white">
+                    <tr v-for="(row, idx) in patientHistoryRecords" :key="row.Id ?? row.id ?? idx">
+                      <td class="px-4 py-3">{{ row.Id ?? row.id ?? 'N/A' }}</td>
+                      <td class="px-4 py-3">{{ row.date ?? row.Date ?? row.visitDate ?? 'N/A' }}</td>
+                      <td class="px-4 py-3">{{ row.VisitNotes ?? row.visitNotes ?? row.notes ?? 'N/A' }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="rounded-2xl border border-[#E8EAED] bg-white p-6">
+              <h4 class="text-base font-semibold">Prescriptions</h4>
+              <p v-if="patientHistoryPrescriptionError" class="mt-3 rounded-lg bg-[#FDECEC] p-3 text-sm text-[#B3261E]">
+                {{ patientHistoryPrescriptionError }}
+              </p>
+              <p v-if="loadingPatientHistory" class="mt-3 text-sm text-[#5f6368]">Loading prescriptions...</p>
+              <p v-else-if="patientHistoryPrescriptions.length === 0" class="mt-3 text-sm text-[#5f6368]">
+                No prescriptions found for this patientId.
+              </p>
+              <div v-else class="mt-4 overflow-hidden rounded-xl border border-[#E8EAED]">
+                <table class="min-w-full divide-y divide-[#E8EAED] text-sm">
+                  <thead class="bg-[#F8F9FA]">
+                    <tr class="text-left text-[#5f6368]">
+                      <th class="px-4 py-3 font-medium">Prescription ID</th>
+                      <th class="px-4 py-3 font-medium">Drug</th>
+                      <th class="px-4 py-3 font-medium">Qty</th>
+                      <th class="px-4 py-3 font-medium">Dosage</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-[#F1F3F4] bg-white">
+                    <tr v-for="row in patientHistoryPrescriptions" :key="row.id">
+                      <td class="px-4 py-3">{{ row.id }}</td>
+                      <td class="px-4 py-3">{{ row.drugName }}</td>
+                      <td class="px-4 py-3">{{ row.quantity }}</td>
+                      <td class="px-4 py-3">{{ row.dosage }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </section>
 
