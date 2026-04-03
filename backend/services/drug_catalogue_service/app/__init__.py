@@ -30,6 +30,10 @@ def create_app() -> FastAPI:
     # ── Router registration ─────────────────────────────────────────────────
     app.include_router(drug_catalogue_router)
 
+    @app.get("/health")
+    def health_check():
+        return {"status": "ok"}
+
     # ── DB schema management ────────────────────────────────────────────────
     # Safe for dev: create_all is idempotent (skips existing tables).
     Base.metadata.create_all(bind=engine)

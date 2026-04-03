@@ -24,17 +24,15 @@ import {
 import ConsultationReview from "./views/ConsultationReview.vue";
 
 const ENDPOINTS = {
-  drugsPrimary: "http://localhost:5001/drug",
-  drugsAlt: "http://localhost:5001/drug/",
-  billing: "http://localhost:5005/make_payment/initiate-payment",
-  billingHealth: "http://localhost:5005/health",
-  records:
-    "https://personal-iipxahjd.outsystemscloud.com/ClinicalRecordServices/rest/RecordsAPI/",
+  drugsPrimary: '/drug',
+  drugsAlt: '/drug/',
+  billing: '/make_payment/initiate-payment',
+  billingHealth: '/make_payment/health',
+  records: 'https://personal-iipxahjd.outsystemscloud.com/ClinicalRecordServices/rest/RecordsAPI/',
   recordsByPatient:
     "https://personal-iipxahjd.outsystemscloud.com/ClinicalRecordServices/rest/RecordsAPI/record/",
   prescriptionByPatientBase:
-    import.meta.env.VITE_PRESCRIPTION_BY_PATIENT_BASE ||
-    "http://localhost:5005",
+    import.meta.env.VITE_PRESCRIPTION_BY_PATIENT_BASE || '/prescription',
   consultationBase:
     import.meta.env.VITE_CONSULTATION_BASE ||
     "https://personal-wv4mxqur.outsystemscloud.com/RecordVisitNotes/rest/ConsultationAPI",
@@ -588,10 +586,13 @@ const normalizePrescriptionRows = (rows) =>
   }));
 
 const fetchPrescriptionsByRecordId = async (recordId) => {
-  const base = ENDPOINTS.prescriptionByPatientBase.replace(/\/$/, "");
-  const response = await axios.get(`${base}/prescription/record/${recordId}`);
-  return normalizeObjectArrayResponse(response.data);
-};
+  const base = ENDPOINTS.prescriptionByPatientBase.replace(/\/$/, '')
+  const path = base.endsWith('/prescription')
+    ? `/record/${recordId}`
+    : `/prescription/record/${recordId}`
+  const response = await axios.get(`${base}${path}`)
+  return normalizeObjectArrayResponse(response.data)
+}
 
 const fetchPatientHistory = async () => {
   patientHistoryError.value = "";
@@ -699,14 +700,13 @@ const fetchDrugs = async () => {
     syncConsultationDrugSelections();
 
     if (!rows.length) {
-      inventoryNotice.value =
-        "Connected to localhost drug service. Inventory is currently empty.";
+      inventoryNotice.value = 'Connected to the drug service via Kong. Inventory is currently empty.'
     }
   } catch (error) {
     console.error("Drug API Error:", error?.response);
     inventoryError.value =
       error?.response?.data?.message ||
-      "Unable to load Drug Service on port 5001. Check route/CORS/service health.";
+      'Unable to load Drug Service via Kong. Check route/service health.'
   } finally {
     loadingInventory.value = false;
   }
@@ -1324,7 +1324,7 @@ const handleConfirmAndPay = async () => {
     paymentError.value =
       error?.response?.data?.message ||
       error?.message ||
-      "Stop 1 failed: Could not initialize payment with localhost:5005/make_payment/initiate-payment.";
+      'Stop 1 failed: Could not initialize payment via Kong at /make_payment/initiate-payment.'
   } finally {
     confirmingPayment.value = false;
   }

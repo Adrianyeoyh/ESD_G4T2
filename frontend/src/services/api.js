@@ -1,7 +1,7 @@
 import axios from "axios";
 
 export const drugApi = axios.create({
-  baseURL: "http://localhost:5001",
+  baseURL: '/drug',
   timeout: 15000,
 });
 
@@ -11,7 +11,7 @@ export const patientApi = axios.create({
 });
 
 export const invoicePaymentApi = axios.create({
-  baseURL: "http://localhost:5004",
+  baseURL: '/payments',
   timeout: 15000,
 });
 
@@ -22,7 +22,7 @@ export const recordsApi = axios.create({
 });
 
 export const billingApi = axios.create({
-  baseURL: "http://localhost:5005",
+  baseURL: '/make_payment',
   timeout: 15000,
   headers: {
     "Content-Type": "application/json",
