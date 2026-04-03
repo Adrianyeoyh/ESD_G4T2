@@ -148,6 +148,7 @@ class MakePaymentService:
                 error_code="MISSING_PATIENT_ID",
                 status_code=502,
             )
+        patient_id = str(patient_id).strip()
         patient = patient_client.get_patient(patient_id)
         phone_no = patient.get("phoneNo") or patient.get("PhoneNo")
         if not phone_no:

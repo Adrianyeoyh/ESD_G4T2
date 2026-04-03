@@ -4,8 +4,9 @@ from app.clients.base import OrchestrationError
 from app.config import settings
 
 
-def get_patient(patient_id: int) -> dict:
-    paths = [f"/patient/{patient_id}", f"/Patient/{patient_id}"]
+def get_patient(patient_id: str) -> dict:
+    normalized_id = str(patient_id).strip()
+    paths = [f"/patient/{normalized_id}", f"/Patient/{normalized_id}"]
     response = _request_with_fallback(paths)
     try:
         payload = response.json()

@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import InvoiceSelection from '../views/InvoiceSelection.vue'
 import PaymentPortal from '../views/PaymentPortal.vue'
 import PaymentSuccess from '../views/PaymentSuccess.vue'
+import ConsultationReview from '../views/ConsultationReview.vue'
 
 const routes = [
   {
@@ -19,6 +20,11 @@ const routes = [
     path: '/payment-success',
     name: 'payment-success',
     component: PaymentSuccess,
+  },
+  {
+    path: '/consultation/review',
+    name: 'consultation-review',
+    component: ConsultationReview,
   },
 ]
 

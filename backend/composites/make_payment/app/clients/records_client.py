@@ -132,7 +132,7 @@ def _build_close_record_payload(record: dict, record_id: int) -> dict:
 
     return {
         "Id": resolved_id,
-        "patientId": int(resolved_patient_id),
+        "patientId": str(resolved_patient_id).strip(),
         "date": _to_yyyy_mm_dd(resolved_date),
         "VisitNotes": str(resolved_visit_notes),
         "isClosed": True,
