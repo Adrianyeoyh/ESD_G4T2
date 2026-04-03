@@ -1,225 +1,102 @@
 from decimal import Decimal
 
-import requests
-from requests.exceptions import RequestException
-
-from app.config.settings import (
-    CLINICAL_RECORDS_REQUIRED,
-    CLINICAL_RECORDS_URL,
-    CLINICAL_RECORD_VALIDATE_PATH,
-    DRUG_CATALOGUE_URL,
-    HTTP_TIMEOUT_SECONDS,
-    INVOICE_SERVICE_URL,
-    PRESCRIPTION_SERVICE_URL,
-)
-from utils.exceptions import AppError, ConflictError, NotFoundError, ValidationError
+from app.clients import drug_catalogue_client, prescription_client, invoice_client, records_client
+from app.clients.base import OrchestrationError, ExternalResponseError
+from app.config import settings
+from utils.exceptions import AppError, ValidationError
 
 
 class PrescribeMedicineService:
-    def _raise_for_downstream(self, response: requests.Response, fallback_message: str):
-        if response.status_code < 400:
-            return
-
-        message = fallback_message
-        try:
-            payload = response.json()
-            if isinstance(payload, dict):
-                error_field = payload.get("error")
-                error_message = None
-                if isinstance(error_field, dict):
-                    error_message = (
-                        error_field.get("message")
-                        or error_field.get("detail")
-                        or str(error_field)
-                    )
-                elif error_field is not None:
-                    error_message = error_field
-                message = (
-                    payload.get("message")
-                    or payload.get("detail")
-                    or error_message
-                    or message
-                )
-        except Exception:
-            pass
-
-        if response.status_code == 404:
-            raise NotFoundError(message)
-        if response.status_code == 409:
-            raise ConflictError(message)
-        if response.status_code == 400:
-            raise ValidationError(message)
-
-        raise AppError(message)
-
-    def _get_all_drugs(self) -> list[dict]:
-        response = requests.get(
-            f"{DRUG_CATALOGUE_URL}/drug",
-            timeout=HTTP_TIMEOUT_SECONDS,
-        )
-        self._raise_for_downstream(response, "Failed to fetch drug catalogue")
-
-        drugs = response.json()
-        if not isinstance(drugs, list):
-            raise AppError("Unexpected response from drug catalogue service")
-
-        return drugs
-
-    def _get_drug_by_id(self, drug_id: int) -> dict:
-        response = requests.get(
-            f"{DRUG_CATALOGUE_URL}/drug/{drug_id}",
-            timeout=HTTP_TIMEOUT_SECONDS,
-        )
-        self._raise_for_downstream(response, f"Failed to fetch drug {drug_id}")
-
-        drug = response.json()
-        if not isinstance(drug, dict):
-            raise AppError("Unexpected response from drug catalogue service")
-
-        return drug
-
-    def _deduct_drug_stock(self, drug_id: int, amount: int) -> dict:
-        """Atomically deduct stock via the drug catalogue service."""
-        response = requests.patch(
-            f"{DRUG_CATALOGUE_URL}/drug/{drug_id}/deduct",
-            json={"amount": amount},
-            timeout=HTTP_TIMEOUT_SECONDS,
-        )
-        self._raise_for_downstream(response, f"Failed to deduct stock for drug {drug_id}")
-
-        drug = response.json()
-        if not isinstance(drug, dict):
-            raise AppError("Unexpected response from drug catalogue service")
-
-        return drug
-
-    def _create_prescription(self, record_id: int, drug_id: int, quantity: int, dosage: str) -> dict:
-        service_url = (PRESCRIPTION_SERVICE_URL or "").strip()
-        if not service_url:
-            raise AppError("Prescription service URL is not configured")
-
-        response = requests.post(
-            f"{service_url}/prescription",
-            json={
-                "recordId": record_id,
-                "drugId": drug_id,
-                "quantity": quantity,
-                "dosage": dosage,
-            },
-            timeout=HTTP_TIMEOUT_SECONDS,
-        )
-        self._raise_for_downstream(response, f"Failed to create prescription for drug {drug_id}")
-
-        payload = response.json()
-        if not isinstance(payload, dict):
-            raise AppError("Unexpected response from prescription service")
-
-        return payload
+    """
+    Orchestrates the prescribe medicine workflow.
+    
+    This service coordinates multiple atomic services to:
+    1. Validate clinical record
+    2. Deduct drug stock (atomic)
+    3. Create prescription records
+    4. Create invoice
+    
+    On failure, it rolls back both stock and prescriptions.
+    """
 
     def _restore_stock(self, rollback_updates: list[dict]) -> list[dict]:
         """Restore stock for rollback using the atomic restore endpoint."""
-        rollback_failures = []
+        failures = []
 
         for update in reversed(rollback_updates):
             try:
-                response = requests.patch(
-                    f"{DRUG_CATALOGUE_URL}/drug/{update['drugId']}/restore",
-                    json={"amount": update["deductedAmount"]},
-                    timeout=HTTP_TIMEOUT_SECONDS,
+                drug_catalogue_client.restore_stock(
+                    update["drugId"],
+                    update["deductedAmount"]
                 )
-
-                if response.status_code >= 400:
-                    rollback_failures.append(
-                        {
-                            "drugId": update["drugId"],
-                            "message": "Failed to restore stock quantity",
-                            "statusCode": response.status_code,
-                        }
-                    )
             except Exception as e:
-                rollback_failures.append(
-                    {
-                        "drugId": update["drugId"],
-                        "message": str(e),
-                    }
-                )
+                failures.append({
+                    "drugId": update["drugId"],
+                    "type": "stock",
+                    "message": str(e),
+                })
 
-        return rollback_failures
+        return failures
 
-    def _get_clinical_record(self, record_id: int) -> dict:
-        """
-        Fetch clinical record from clinical records service.
-        Returns dict with: recordId, patientId, date, visitNotes, isClosed
-        """
-        if not CLINICAL_RECORDS_URL:
-            if CLINICAL_RECORDS_REQUIRED:
-                raise AppError("Clinical records URL is not configured")
-            return None
+    def _delete_prescriptions(self, prescription_ids: list[int]) -> list[dict]:
+        """Delete created prescriptions for rollback."""
+        failures = []
 
-        try:
-            response = requests.get(
-                f"{CLINICAL_RECORDS_URL}{CLINICAL_RECORD_VALIDATE_PATH.format(recordId=record_id)}",
-                timeout=HTTP_TIMEOUT_SECONDS,
-            )
-        except RequestException as e:
-            if CLINICAL_RECORDS_REQUIRED:
-                raise AppError(f"Clinical record service unavailable: {str(e)}")
-            return None
+        for pid in reversed(prescription_ids):
+            if pid is None:
+                continue
+            try:
+                prescription_client.delete_prescription(pid)
+            except Exception as e:
+                failures.append({
+                    "prescriptionId": pid,
+                    "type": "prescription",
+                    "message": str(e),
+                })
 
-        if response.status_code == 404:
-            if CLINICAL_RECORDS_REQUIRED:
-                raise NotFoundError(f"Clinical record {record_id} not found")
-            return None
-
-        if response.status_code >= 400:
-            if CLINICAL_RECORDS_REQUIRED:
-                self._raise_for_downstream(response, "Failed to fetch clinical record")
-            return None
-
-        record = response.json()
-        if not isinstance(record, dict):
-            raise AppError("Unexpected response format from clinical records service")
-
-        if record.get("isClosed", False):
-            raise ConflictError(f"Cannot prescribe for closed clinical record {record_id}")
-
-        return record
+        return failures
 
     def prescribe_medicine(self, record_id: int, items: list[dict]):
         if not items:
             raise ValidationError("At least one medicine item is required")
 
-        # Step 2: Get clinical record
-        clinical_record = self._get_clinical_record(record_id)
+        # Step 1: Get and validate clinical record
+        clinical_record = records_client.get_clinical_record(
+            record_id,
+            required=settings.CLINICAL_RECORDS_REQUIRED
+        )
 
-        # Step 3: Validate and fetch requested drugs one by one
+        # Track items for rollback
         prescribed_items = []
         invoice_total = Decimal("0")
-        rollback_updates = []
+        rollback_stock = []
+        created_prescription_ids = []
 
         try:
-            # Step 4: Process each prescribed item
+            # Step 2: Process each prescribed item
             for item in items:
                 drug_id = item["drugId"]
                 quantity = item["quantity"]
                 dosage = item["dosage"]
 
-                # Step 4a: Atomically deduct drug stock (handles race condition)
-                # The atomic service will return 409 if insufficient stock
-                drug = self._deduct_drug_stock(drug_id, quantity)
+                # Step 2a: Atomically deduct drug stock
+                drug = drug_catalogue_client.deduct_stock(drug_id, quantity)
 
-                rollback_updates.append({
+                rollback_stock.append({
                     "drugId": drug_id,
                     "deductedAmount": quantity,
                 })
 
-                # Step 6: Create prescription record via POST
-                prescription_payload = self._create_prescription(
+                # Step 2b: Create prescription record
+                prescription = prescription_client.create_prescription(
                     record_id=record_id,
                     drug_id=drug_id,
                     quantity=quantity,
                     dosage=dosage,
                 )
+                created_prescription_ids.append(prescription.get("prescriptionId"))
+
+                # Calculate totals
                 item_total = Decimal(str(drug["price"])) * Decimal(quantity)
                 invoice_total += item_total
 
@@ -230,41 +107,31 @@ class PrescribeMedicineService:
                     "dosage": dosage,
                     "unitPrice": str(drug["price"]),
                     "lineTotal": str(item_total),
-                    "prescriptionId": prescription_payload.get("prescriptionId"),
+                    "prescriptionId": prescription.get("prescriptionId"),
                 })
 
-            # Step 7: Create invoice via POST
-            # Note: Only send fields accepted by InvoiceCreate schema (recordId, total)
-            # Invoice is linked to prescriptions via recordId, not directly
-            invoice_response = requests.post(
-                f"{INVOICE_SERVICE_URL}/invoice",
-                json={
-                    "recordId": record_id,
-                    "total": str(invoice_total)
-                },
-                timeout=HTTP_TIMEOUT_SECONDS,
-            )
-            self._raise_for_downstream(invoice_response, "Failed to create invoice")
+            # Step 3: Create invoice
+            invoice = invoice_client.create_invoice(record_id, str(invoice_total))
 
-            # Step 8: Return successful result
+            # Step 4: Return successful result
             return {
                 "recordId": record_id,
                 "patientId": clinical_record.get("patientId") if clinical_record else None,
                 "items": prescribed_items,
-                "invoice": invoice_response.json(),
+                "invoice": invoice,
                 "total": str(invoice_total),
             }
 
-        except (AppError, RequestException) as e:
-            # Rollback: Restore stock quantities
-            rollback_failures = self._restore_stock(rollback_updates)
+        except (AppError, OrchestrationError, ExternalResponseError) as e:
+            # Rollback: Restore stock AND delete prescriptions (FIX-5)
+            stock_failures = self._restore_stock(rollback_stock)
+            prescription_failures = self._delete_prescriptions(created_prescription_ids)
+            all_failures = stock_failures + prescription_failures
 
-            if rollback_failures:
+            if all_failures:
                 raise AppError(
                     f"Prescription failed: {str(e)} | "
-                    f"Stock rollback incomplete - manual intervention required: {rollback_failures}"
+                    f"Rollback incomplete - manual intervention required: {all_failures}"
                 )
 
             raise
-
-
