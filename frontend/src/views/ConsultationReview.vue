@@ -9,6 +9,8 @@ const ENDPOINTS = {
   consultationBase:
     import.meta.env.VITE_CONSULTATION_BASE ||
     'https://personal-wv4mxqur.outsystemscloud.com/RecordVisitNotes/rest/ConsultationAPI',
+  prescribeMedicineBase:
+    import.meta.env.VITE_PRESCRIBE_MEDICINE_BASE || 'http://localhost:5007',
 }
 
 const CONSULTATION_DRAFT_KEY = 'consultation:pending-draft'
@@ -69,22 +71,58 @@ const backToConsultation = () => {
   router.push('/')
 }
 
+const extractStatus = (payload) => {
+  const status = payload?.status ?? payload?.Status ?? null
+  return typeof status === 'string' ? status.trim().toLowerCase() : null
+}
+
+const extractRecordId = (payload) =>
+  payload?.newRecord?.recordId ??
+  payload?.newRecord?.RecordId ??
+  payload?.recordId ??
+  payload?.RecordId ??
+  null
+
+const parseResponsePayload = async (response) => {
+  const rawText = await response.text()
+  if (!rawText) {
+    return {}
+  }
+
+  try {
+    return JSON.parse(rawText)
+  } catch {
+    return { message: rawText }
+  }
+}
+
 const confirmSubmission = async () => {
   reviewError.value = ''
   reviewSuccess.value = ''
 
   const patientId = String(consultationDraft.value?.patientId || '').trim()
   const visitNotes = String(composedVisitNotes.value || '').trim()
+  const selectedDrugItems = selectedDrugs.value
+    .map((drug) => ({
+      drugName: String(drug.name || '').trim(),
+      quantity: Number(drug.quantity || 0),
+    }))
+    .filter((item) => item.drugName && item.quantity > 0)
 
   if (!patientId || !visitNotes) {
     reviewError.value = 'The consultation draft is incomplete.'
     return
   }
 
+  if (!selectedDrugItems.length) {
+    reviewError.value = 'Please select at least one drug with quantity greater than 0.'
+    return
+  }
+
   submittingConsultation.value = true
 
   try {
-    const response = await fetch(
+    const consultationResponse = await fetch(
       `${ENDPOINTS.consultationBase.replace(/\/$/, '')}/consultation/${encodeURIComponent(patientId)}`,
       {
         method: 'POST',
@@ -95,23 +133,61 @@ const confirmSubmission = async () => {
       },
     )
 
-    if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(errorText || `Consultation failed (${response.status})`)
+    const consultationPayload = await parseResponsePayload(consultationResponse)
+
+    if (!consultationResponse.ok) {
+      throw new Error(
+        consultationPayload?.message ||
+          consultationPayload?.error ||
+          `Consultation failed (${consultationResponse.status})`,
+      )
     }
 
-    const payload = await response.json()
-    const recordId =
-      payload?.newRecord?.recordId ??
-      payload?.newRecord?.RecordId ??
-      payload?.recordId ??
-      payload?.RecordId ??
-      null
+    const consultationStatus = extractStatus(consultationPayload)
+    if (consultationStatus && consultationStatus !== 'success') {
+      throw new Error(
+        consultationPayload?.message ||
+          consultationPayload?.error ||
+          `Consultation returned status '${consultationStatus}'.`,
+      )
+    }
+
+    const recordId = extractRecordId(consultationPayload)
+    if (recordId === null || recordId === undefined || String(recordId).trim() === '') {
+      throw new Error('Consultation succeeded but no recordId was returned.')
+    }
+
+    const prescribeResponse = await fetch(
+      `${ENDPOINTS.prescribeMedicineBase.replace(/\/$/, '')}/prescribe/${encodeURIComponent(String(recordId))}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(selectedDrugItems),
+      },
+    )
+
+    const prescribePayload = await parseResponsePayload(prescribeResponse)
+    if (!prescribeResponse.ok) {
+      throw new Error(
+        prescribePayload?.message ||
+          prescribePayload?.error ||
+          `Prescribe medicine failed (${prescribeResponse.status})`,
+      )
+    }
+
+    const prescribeStatus = extractStatus(prescribePayload)
+    if (prescribeStatus !== 'success') {
+      throw new Error(
+        prescribePayload?.message ||
+          prescribePayload?.error ||
+          `Prescribe medicine returned status '${prescribeStatus || 'unknown'}'.`,
+      )
+    }
 
     sessionStorage.removeItem(CONSULTATION_DRAFT_KEY)
-    reviewSuccess.value = recordId
-      ? `Consultation created successfully. Record ID: ${recordId}`
-      : 'Consultation created successfully.'
+    reviewSuccess.value = `Consultation and prescription submitted successfully. Record ID: ${recordId}`
   } catch (error) {
     reviewError.value = error?.message || 'Unable to submit consultation right now.'
   } finally {
