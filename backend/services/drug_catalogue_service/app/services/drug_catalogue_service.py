@@ -64,6 +64,33 @@ class DrugService:
         self.db.refresh(drug)
         return drug
 
+    def deduct_quantity(self, drug_id: int, amount: int):
+        """Atomically deduct stock. Raises ConflictError if insufficient."""
+        if amount <= 0:
+            raise ValidationError("Deduction amount must be positive")
+
+        drug = self.get_drug(drug_id)
+        if drug.quantity < amount:
+            raise ConflictError(
+                f"Insufficient stock for drug {drug_id}. "
+                f"Available: {drug.quantity}, Requested: {amount}"
+            )
+        drug.quantity -= amount
+        self.db.commit()
+        self.db.refresh(drug)
+        return drug
+
+    def restore_quantity(self, drug_id: int, amount: int):
+        """Atomically restore stock (for rollback scenarios)."""
+        if amount <= 0:
+            raise ValidationError("Restore amount must be positive")
+
+        drug = self.get_drug(drug_id)
+        drug.quantity += amount
+        self.db.commit()
+        self.db.refresh(drug)
+        return drug
+
     def delete_drug(self, drug_id: int):
         drug = self.get_drug(drug_id)
         self.repo.delete(drug)

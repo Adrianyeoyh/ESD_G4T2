@@ -58,6 +58,32 @@ class DrugUpdateQuantity(BaseModel):
         return v
 
 
+class DrugDeductQuantity(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    amount: int
+
+    @field_validator('amount')
+    @classmethod
+    def validate_amount(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError('Deduction amount must be positive')
+        return v
+
+
+class DrugRestoreQuantity(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    amount: int
+
+    @field_validator('amount')
+    @classmethod
+    def validate_amount(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError('Restore amount must be positive')
+        return v
+
+
 class DrugResponse(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, from_attributes=True)
     drug_id: int

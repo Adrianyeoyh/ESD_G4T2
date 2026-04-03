@@ -78,6 +78,21 @@ class PrescribeMedicineService:
 
         return drug
 
+    def _deduct_drug_stock(self, drug_id: int, amount: int) -> dict:
+        """Atomically deduct stock via the drug catalogue service."""
+        response = requests.patch(
+            f"{DRUG_CATALOGUE_URL}/drug/{drug_id}/deduct",
+            json={"amount": amount},
+            timeout=HTTP_TIMEOUT_SECONDS,
+        )
+        self._raise_for_downstream(response, f"Failed to deduct stock for drug {drug_id}")
+
+        drug = response.json()
+        if not isinstance(drug, dict):
+            raise AppError("Unexpected response from drug catalogue service")
+
+        return drug
+
     def _create_prescription(self, record_id: int, drug_id: int, quantity: int, dosage: str) -> dict:
         service_url = (PRESCRIPTION_SERVICE_URL or "").strip()
         if not service_url:
@@ -102,13 +117,14 @@ class PrescribeMedicineService:
         return payload
 
     def _restore_stock(self, rollback_updates: list[dict]) -> list[dict]:
+        """Restore stock for rollback using the atomic restore endpoint."""
         rollback_failures = []
 
         for update in reversed(rollback_updates):
             try:
                 response = requests.patch(
-                    f"{DRUG_CATALOGUE_URL}/drug/{update['drugId']}/quantity",
-                    json={"quantity": update["previousQuantity"]},
+                    f"{DRUG_CATALOGUE_URL}/drug/{update['drugId']}/restore",
+                    json={"amount": update["deductedAmount"]},
                     timeout=HTTP_TIMEOUT_SECONDS,
                 )
 
@@ -188,25 +204,13 @@ class PrescribeMedicineService:
                 quantity = item["quantity"]
                 dosage = item["dosage"]
 
-                drug = self._get_drug_by_id(drug_id)
-                current_quantity = int(drug["quantity"])
-
-                if quantity > current_quantity:
-                    raise ConflictError(
-                        f"Insufficient stock for drug {drug_id}. Available: {current_quantity}, Requested: {quantity}"
-                    )
-
-                # Step 4a: Update drug stock via PATCH
-                update_response = requests.patch(
-                    f"{DRUG_CATALOGUE_URL}/drug/{drug_id}/quantity",
-                    json={"quantity": current_quantity - quantity},
-                    timeout=HTTP_TIMEOUT_SECONDS,
-                )
-                self._raise_for_downstream(update_response, f"Failed to update drug stock for drug {drug_id}")
+                # Step 4a: Atomically deduct drug stock (handles race condition)
+                # The atomic service will return 409 if insufficient stock
+                drug = self._deduct_drug_stock(drug_id, quantity)
 
                 rollback_updates.append({
                     "drugId": drug_id,
-                    "previousQuantity": current_quantity,
+                    "deductedAmount": quantity,
                 })
 
                 # Step 6: Create prescription record via POST
@@ -230,16 +234,12 @@ class PrescribeMedicineService:
                 })
 
             # Step 7: Create invoice via POST
+            # Note: Only send fields accepted by InvoiceCreate schema (recordId, total)
+            # Invoice is linked to prescriptions via recordId, not directly
             invoice_response = requests.post(
                 f"{INVOICE_SERVICE_URL}/invoice",
                 json={
                     "recordId": record_id,
-                    "patientId": clinical_record.get("patientId") if clinical_record else None,
-                    "prescriptions": [{
-                        "drugId": item["drugId"],
-                        "quantity": item["quantity"],
-                        "dosage": item["dosage"]
-                    } for item in prescribed_items],
                     "total": str(invoice_total)
                 },
                 timeout=HTTP_TIMEOUT_SECONDS,

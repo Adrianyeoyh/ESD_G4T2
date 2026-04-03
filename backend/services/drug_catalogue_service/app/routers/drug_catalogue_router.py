@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.config.drug_catalogue_db import get_db
-from app.schemas.drug_catalogue_schema import DrugCreate, DrugUpdate, DrugUpdateQuantity, DrugResponse
+from app.schemas.drug_catalogue_schema import DrugCreate, DrugUpdate, DrugUpdateQuantity, DrugDeductQuantity, DrugRestoreQuantity, DrugResponse
 from app.services.drug_catalogue_service import DrugService
 
 router = APIRouter(prefix="/drug", tags=["Drug Catalogue"])
@@ -43,6 +43,26 @@ def update_drug_quantity(
     service: DrugService = Depends(get_drug_service),
 ):
     return service.update_quantity(drug_id, update_data.quantity)
+
+
+@router.patch("/{drug_id}/deduct", response_model=DrugResponse)
+def deduct_drug_quantity(
+    drug_id: int,
+    body: DrugDeductQuantity,
+    service: DrugService = Depends(get_drug_service),
+):
+    """Atomically deduct stock. Returns 409 if insufficient stock."""
+    return service.deduct_quantity(drug_id, body.amount)
+
+
+@router.patch("/{drug_id}/restore", response_model=DrugResponse)
+def restore_drug_quantity(
+    drug_id: int,
+    body: DrugRestoreQuantity,
+    service: DrugService = Depends(get_drug_service),
+):
+    """Atomically restore stock (for rollback scenarios)."""
+    return service.restore_quantity(drug_id, body.amount)
 
 
 @router.delete("/{drug_id}", status_code=204)

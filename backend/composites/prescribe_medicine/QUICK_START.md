@@ -42,7 +42,7 @@ curl -X POST http://localhost:5007/prescribe/1234 \
 ```json
 {
   "recordId": 1234,
-  "patientId": 5678,
+  "patientId": "P5678",
   "items": [{
     "drugId": 1,
     "drugName": "Ibuprofen",
