@@ -4,13 +4,20 @@ import axios from 'axios'
 import { loadStripe } from '@stripe/stripe-js'
 import { useRoute, useRouter } from 'vue-router'
 import {
+  AlertCircle,
+  ChevronDown,
+  ChevronUp,
+  CircleCheckBig,
   CreditCard,
   FileText,
   LoaderCircle,
   Pill,
   Plus,
+  SquarePen,
+  Trash2,
   UserPlus,
   Wallet,
+  X,
 } from 'lucide-vue-next'
 import ConsultationReview from './views/ConsultationReview.vue'
 
@@ -47,6 +54,38 @@ const loadingInventory = ref(false)
 const loadingRecords = ref(false)
 const inventoryError = ref('')
 const recordsError = ref('')
+const inventoryNotice = ref('')
+const inventorySearch = ref('')
+const deletingDrugId = ref(null)
+const deletingDrugError = ref('')
+const expandedDrugIds = ref([])
+const toasts = ref([])
+let toastCounter = 0
+
+const addDrugModalOpen = ref(false)
+const addingDrug = ref(false)
+const addDrugError = ref('')
+const addDrugForm = ref({
+  drugName: '',
+  quantity: 0,
+  price: 0,
+  purpose: '',
+  dosage: '',
+  remarks: '',
+})
+
+const editDrugModalOpen = ref(false)
+const editingDrug = ref(false)
+const editDrugError = ref('')
+const editDrugForm = ref({
+  drugId: null,
+  drugName: '',
+  quantity: 0,
+  price: 0,
+  purpose: '',
+  dosage: '',
+  remarks: '',
+})
 
 const patientHistoryForm = ref({
   patientId: '',
@@ -90,6 +129,8 @@ const outsystemsSyncing = computed(() => outsystemsSyncCounter.value > 0)
 const consultationForm = ref({
   patientId: '',
   visitNotes: '',
+  prescribedDrugId: '',
+  prescribedQuantity: 1,
 })
 const consultationDrugSearch = ref('')
 const consultationDrugSelections = ref({})
@@ -225,6 +266,8 @@ const loadingBilling = ref(false)
 const billingError = ref('')
 const markingPaidId = ref(null)
 const billingSuccess = ref('')
+const PRESCRIPTION_STORAGE_KEY = 'medflow.prescriptions.byRecordId'
+const recordPrescriptions = ref({})
 
 const navItems = [
   { key: 'inventory', label: 'Inventory', icon: Pill },
@@ -233,9 +276,36 @@ const navItems = [
   { key: 'payments', label: 'Payments', icon: CreditCard },
 ]
 
-const pendingInvoices = computed(() =>
-  records.value
-    .map((record, index) => ({
+const filteredInventory = computed(() => {
+  const query = String(inventorySearch.value || "").trim().toLowerCase()
+  if (!query) {
+    return inventory.value
+  }
+  return inventory.value.filter((drug) =>
+    String(drug.drugName || "").toLowerCase().includes(query) ||
+    String(drug.purpose || "").toLowerCase().includes(query),
+  )
+})
+
+const selectedPrescribedDrug = computed(() => {
+  const selectedId = Number(consultationForm.value.prescribedDrugId)
+  if (!Number.isFinite(selectedId) || selectedId <= 0) {
+    return null
+  }
+  return inventory.value.find((drug) => getDrugId(drug) === selectedId) || null
+})
+
+const billingAmountByRecordId = computed(
+  () =>
+    new Map(
+      billingRows.value.map((row) => [Number(row.Id), Number(row.totalAmount ?? 0)]),
+    ),
+)
+
+const pendingInvoices = computed(() => {
+  const rows = records.value.map((record, index) => {
+    const recordId = Number(record.Id ?? record.id ?? index + 1)
+    return {
       invoiceId: String(
         record.invoiceId ??
           record.InvoiceId ??
@@ -249,13 +319,16 @@ const pendingInvoices = computed(() =>
         record.name ??
         'Unknown patient'
       ).trim(),
-      amount: Number(record.amount ?? record.total_amount ?? record.TotalAmount ?? 0),
+      amount:
+        billingAmountByRecordId.value.get(recordId) ??
+        Number(record.amount ?? record.total_amount ?? record.TotalAmount ?? 0),
       currency: String(record.currency ?? record.Currency ?? 'SGD').trim(),
       status: String(record.status ?? record.Status ?? 'PENDING').toUpperCase().trim(),
-      diagnosis: String(record.diagnosis ?? record.Diagnosis ?? 'N/A').trim(),
-    }))
-    .filter((item) => item.status !== 'PAID'),
-)
+      diagnosis: String(record.VisitNotes ?? record.visitNotes ?? record.diagnosis ?? 'N/A').trim(),
+    }
+  })
+  return rows.filter((item) => item.status !== 'PAID')
+})
 
 const normalizedRecords = computed(() =>
   records.value.map((record, idx) => {
@@ -417,9 +490,100 @@ const endOutsystemsSync = () => {
   outsystemsSyncCounter.value = Math.max(0, outsystemsSyncCounter.value - 1)
 }
 
+const getDrugId = (drug) => Number(drug?.drugId ?? drug?.drug_id ?? drug?.id ?? 0)
+
+const normalizeDrug = (drug) => {
+  const normalizedId = getDrugId(drug)
+  const normalizedQuantity = Number(drug?.quantity ?? drug?.stock ?? 0)
+  const normalizedPrice = Number(drug?.price ?? 0)
+  const normalizedDosage = String(
+    drug?.dosage ?? drug?.recommendedDosage ?? drug?.recommended_dosage ?? "",
+  ).trim()
+  return {
+    ...drug,
+    drugId: normalizedId,
+    drugName: drug?.drugName ?? drug?.drug_name ?? drug?.name ?? '',
+    quantity: Number.isFinite(normalizedQuantity) ? normalizedQuantity : 0,
+    price: Number.isFinite(normalizedPrice) ? normalizedPrice : 0,
+    purpose: String(drug?.purpose ?? "").trim(),
+    dosage: normalizedDosage,
+    recommendedDosage: normalizedDosage,
+    remarks: String(drug?.remarks ?? "").trim(),
+  }
+}
+
+const sortedDrugs = (drugs) =>
+  [...drugs].sort((a, b) => String(a.drugName || '').localeCompare(String(b.drugName || '')))
+
+const savePrescriptions = () => {
+  localStorage.setItem(PRESCRIPTION_STORAGE_KEY, JSON.stringify(recordPrescriptions.value))
+}
+
+const loadPrescriptions = () => {
+  try {
+    const raw = localStorage.getItem(PRESCRIPTION_STORAGE_KEY)
+    recordPrescriptions.value = raw ? JSON.parse(raw) : {}
+  } catch {
+    recordPrescriptions.value = {}
+  }
+}
+
+const getPrescriptionForRecord = (recordId) => {
+  const key = String(recordId)
+  return recordPrescriptions.value[key] || null
+}
+
+const resolvePrescriptionPricing = (recordId) => {
+  const prescription = getPrescriptionForRecord(recordId)
+  if (!prescription) {
+    return null
+  }
+  const prescribedDrug = inventory.value.find((drug) => getDrugId(drug) === Number(prescription.drugId))
+  const unitPrice = Number(prescribedDrug?.price ?? 0)
+  const quantity = Number(prescription.quantity ?? 0)
+  return {
+    drugId: Number(prescription.drugId),
+    drugName: prescribedDrug?.drugName || prescription.drugName || 'Unknown Drug',
+    quantity,
+    unitPrice,
+    totalAmount: Number((unitPrice * quantity).toFixed(2)),
+  }
+}
+
+const hydrateBillingRows = (rows) =>
+  rows.map((row) => {
+    const recordId = Number(row.Id ?? row.id ?? 0)
+    const pricing = resolvePrescriptionPricing(recordId)
+    return {
+      ...row,
+      Id: recordId,
+      prescribedDrugName: pricing?.drugName || 'Not captured',
+      prescribedQty: pricing?.quantity ?? 0,
+      unitPrice: pricing?.unitPrice ?? 0,
+      totalAmount: pricing?.totalAmount ?? 0,
+    }
+  })
+
+const recalculateBillingPricing = () => {
+  billingRows.value = hydrateBillingRows(billingRows.value)
+}
+
+const dismissToast = (toastId) => {
+  toasts.value = toasts.value.filter((item) => item.id !== toastId)
+}
+
+const showToast = (message, type = "success") => {
+  const id = toastCounter++
+  toasts.value = [...toasts.value, { id, message, type }]
+  window.setTimeout(() => {
+    dismissToast(id)
+  }, 3000)
+}
+
 const fetchDrugs = async () => {
   loadingInventory.value = true
   inventoryError.value = ''
+  inventoryNotice.value = ''
 
   try {
     let response
@@ -434,7 +598,7 @@ const fetchDrugs = async () => {
     syncConsultationDrugSelections()
 
     if (!rows.length) {
-      inventoryError.value = 'Drug service connected, but no inventory rows were returned.'
+      inventoryNotice.value = 'Connected to localhost drug service. Inventory is currently empty.'
     }
   } catch (error) {
     console.error('Drug API Error:', error?.response)
@@ -465,6 +629,238 @@ const fetchRecords = async () => {
   }
 }
 
+const openAddDrugModal = () => {
+  addDrugError.value = ''
+  addDrugForm.value = {
+    drugName: '',
+    quantity: 0,
+    price: 0,
+    purpose: '',
+    dosage: '',
+    remarks: '',
+  }
+  addDrugModalOpen.value = true
+}
+
+const updateAddDrugField = (key, value) => {
+  addDrugForm.value = {
+    ...addDrugForm.value,
+    [key]: value,
+  }
+}
+
+const closeAddDrugModal = () => {
+  addDrugModalOpen.value = false
+}
+
+const submitAddDrug = async () => {
+  addDrugError.value = ''
+  const drugData = {
+    drugName: String(addDrugForm.value.drugName || '').trim(),
+    quantity: Number(addDrugForm.value.quantity),
+    price: Number(addDrugForm.value.price),
+    purpose: String(addDrugForm.value.purpose || '').trim() || null,
+    dosage: String(addDrugForm.value.dosage || '').trim() || null,
+    remarks: String(addDrugForm.value.remarks || '').trim() || null,
+  }
+
+  if (!drugData.drugName) {
+    addDrugError.value = 'Drug Name is required.'
+    return
+  }
+  if (!Number.isFinite(drugData.quantity) || drugData.quantity < 0) {
+    addDrugError.value = 'Stock Quantity must be 0 or greater.'
+    return
+  }
+  if (!Number.isFinite(drugData.price) || drugData.price <= 0) {
+    addDrugError.value = 'Unit Price must be greater than 0.'
+    return
+  }
+
+  addingDrug.value = true
+  try {
+    console.log('Sending to DB:', drugData)
+    const response = await axios.post(ENDPOINTS.drugsPrimary, {
+      ...drugData,
+      recommendedDosage: drugData.dosage,
+    })
+    const created = normalizeDrug(response.data)
+    inventory.value = sortedDrugs([...inventory.value, created])
+    await fetchDrugs()
+    closeAddDrugModal()
+    showToast(`Drug ${created.drugName || drugData.drugName} added successfully!`, "success")
+  } catch (error) {
+    addDrugError.value =
+      error?.response?.data?.error ||
+      error?.response?.data?.message ||
+      'Unable to add drug.'
+    showToast(addDrugError.value, "error")
+  } finally {
+    addingDrug.value = false
+  }
+}
+
+const openEditDrugModal = (drug) => {
+  editDrugError.value = ''
+  editDrugForm.value = {
+    drugId: getDrugId(drug),
+    drugName: drug.drugName || drug.drug_name || drug.name || '',
+    quantity: Number(drug.quantity ?? drug.stock ?? 0),
+    price: Number(drug.price ?? 0),
+    purpose: String(drug.purpose || ''),
+    dosage: String(drug.dosage || drug.recommendedDosage || ''),
+    remarks: String(drug.remarks || ''),
+  }
+  editDrugModalOpen.value = true
+}
+
+const closeEditDrugModal = () => {
+  editDrugModalOpen.value = false
+}
+
+const updateEditDrugField = (key, value) => {
+  editDrugForm.value = {
+    ...editDrugForm.value,
+    [key]: value,
+  }
+}
+
+const toggleDrugDetails = (drugId) => {
+  const normalizedId = Number(drugId)
+  if (!Number.isFinite(normalizedId) || normalizedId <= 0) {
+    return
+  }
+  if (expandedDrugIds.value.includes(normalizedId)) {
+    expandedDrugIds.value = expandedDrugIds.value.filter((id) => id !== normalizedId)
+    return
+  }
+  expandedDrugIds.value = [...expandedDrugIds.value, normalizedId]
+}
+
+const isDrugExpanded = (drugId) => expandedDrugIds.value.includes(Number(drugId))
+
+const deleteDrug = async (drug) => {
+  const drugId = getDrugId(drug)
+  const drugName = drug?.drugName || 'this drug'
+  deletingDrugError.value = ''
+
+  if (!window.confirm(`Delete ${drugName} from localhost inventory?`)) {
+    return
+  }
+
+  deletingDrugId.value = drugId
+  try {
+    await axios.delete(`${ENDPOINTS.drugsPrimary}/${drugId}`)
+    inventory.value = inventory.value.filter((item) => getDrugId(item) !== drugId)
+    expandedDrugIds.value = expandedDrugIds.value.filter((id) => id !== drugId)
+    recalculateBillingPricing()
+    await fetchDrugs()
+    showToast("Drug removed from inventory.", "success")
+  } catch (error) {
+    deletingDrugError.value =
+      error?.response?.data?.error ||
+      error?.response?.data?.message ||
+      'Unable to delete drug.'
+    showToast(deletingDrugError.value, "error")
+  } finally {
+    deletingDrugId.value = null
+  }
+}
+
+const submitEditDrug = async () => {
+  editDrugError.value = ''
+  const drugId = Number(editDrugForm.value.drugId)
+  const quantity = Number(editDrugForm.value.quantity)
+  const price = Number(editDrugForm.value.price)
+  const purpose = String(editDrugForm.value.purpose || '').trim() || null
+  const dosage = String(editDrugForm.value.dosage || '').trim() || null
+  const remarks = String(editDrugForm.value.remarks || '').trim() || null
+
+  if (!Number.isFinite(drugId) || drugId <= 0) {
+    editDrugError.value = 'Invalid drug selected.'
+    return
+  }
+  if (!Number.isFinite(quantity) || quantity < 0) {
+    editDrugError.value = 'Stock Quantity must be 0 or greater.'
+    return
+  }
+  if (!Number.isFinite(price) || price <= 0) {
+    editDrugError.value = 'Unit Price must be greater than 0.'
+    return
+  }
+
+  const drugData = {
+    quantity,
+    price,
+    purpose,
+    dosage,
+    remarks,
+  }
+
+  editingDrug.value = true
+  try {
+    console.log('Sending to DB:', drugData)
+    const response = await axios.put(`${ENDPOINTS.drugsPrimary}/${drugId}`, {
+      ...drugData,
+      recommendedDosage: drugData.dosage,
+    })
+    const updatedDrug = normalizeDrug(response.data)
+    inventory.value = sortedDrugs(
+      inventory.value.map((item) => (getDrugId(item) === drugId ? updatedDrug : item)),
+    )
+    recalculateBillingPricing()
+    await fetchDrugs()
+    closeEditDrugModal()
+    showToast("Inventory updated successfully!", "success")
+  } catch (error) {
+    editDrugError.value =
+      error?.response?.data?.error ||
+      error?.response?.data?.message ||
+      'Unable to update drug.'
+    showToast(editDrugError.value, "error")
+  } finally {
+    editingDrug.value = false
+  }
+}
+
+const applyPrescriptionToInventory = async (recordId, prescribedDrugId, prescribedQuantity) => {
+  const drugId = Number(prescribedDrugId)
+  const quantity = Number(prescribedQuantity)
+  const drug = inventory.value.find((item) => getDrugId(item) === drugId)
+
+  if (!drug) {
+    throw new Error('Selected drug is no longer available in inventory.')
+  }
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    throw new Error('Prescribed quantity must be at least 1.')
+  }
+
+  const currentQty = Number(drug.quantity ?? 0)
+  if (quantity > currentQty) {
+    throw new Error(`Insufficient stock for ${drug.drugName}. Available: ${currentQty}.`)
+  }
+
+  const nextQty = currentQty - quantity
+  const response = await axios.put(`${ENDPOINTS.drugsPrimary}/${drugId}`, {
+    quantity: nextQty,
+    price: Number(drug.price ?? 0),
+  })
+  const updatedDrug = normalizeDrug(response.data)
+  inventory.value = sortedDrugs(
+    inventory.value.map((item) => (getDrugId(item) === drugId ? updatedDrug : item)),
+  )
+
+  if (recordId) {
+    recordPrescriptions.value[String(recordId)] = {
+      drugId,
+      quantity,
+      drugName: drug.drugName,
+    }
+    savePrescriptions()
+    recalculateBillingPricing()
+  }
+}
+
 const submitConsultation = async () => {
   consultationError.value = ''
   consultationSuccess.value = ''
@@ -476,6 +872,8 @@ const submitConsultation = async () => {
   const visitNotes = String(consultationForm.value.visitNotes || '').trim()
   if (!patientId || !visitNotes) {
     consultationError.value = 'patientId and visitNotes are required.'
+    return
+  }
     return
   }
 
@@ -544,23 +942,12 @@ const dispenseRecord = async (record) => {
       }
     })
 
-    // Reflect stock update logic-wise by decrementing one in-stock item.
-    const stockIdx = inventory.value.findIndex((item) => Number(item.quantity ?? item.stock ?? 0) > 0)
-    if (stockIdx >= 0) {
-      const stockItem = inventory.value[stockIdx]
-      const currentQty = Number(stockItem.quantity ?? stockItem.stock ?? 0)
-      const nextQty = Math.max(0, currentQty - 1)
-      inventory.value[stockIdx] = {
-        ...stockItem,
-        quantity: nextQty,
-        stock: nextQty,
-      }
-    }
-
     dispenseSuccess.value = `Record ${updatedRecordId} dispensed and closed.`
+    showToast("Medication dispensed and stock updated on localhost.", "success")
     await loadBillingRows()
   } catch (error) {
     dispenseError.value = error?.message || 'Unable to dispense this record.'
+    showToast(dispenseError.value, "error")
   } finally {
     dispensingRecordId.value = null
     endOutsystemsSync()
@@ -588,7 +975,7 @@ const loadBillingRows = async () => {
       : Array.isArray(payload?.data)
         ? payload.data
         : []
-    billingRows.value = rows.map((row, idx) => ({
+    const normalized = rows.map((row, idx) => ({
       Id: Number(row.Id ?? row.id ?? idx + 1),
       patientName: row.patientName ?? row.name ?? 'Unknown patient',
       nric: row.nric ?? 'N/A',
@@ -596,9 +983,10 @@ const loadBillingRows = async () => {
       email: row.email ?? '',
       isPaid: Boolean(row.isPaid ?? row.paid ?? false),
     }))
+    billingRows.value = hydrateBillingRows(normalized)
   } catch {
     // Fallback: derive billing-ready rows from closed records.
-    billingRows.value = normalizedRecords.value
+    const normalized = normalizedRecords.value
       .filter((row) => row.isClosed)
       .map((row) => ({
         Id: row.Id,
@@ -608,6 +996,7 @@ const loadBillingRows = async () => {
         email: row.email,
         isPaid: String(row.status).toUpperCase() === 'PAID',
       }))
+    billingRows.value = hydrateBillingRows(normalized)
   } finally {
     loadingBilling.value = false
   }
@@ -876,6 +1265,7 @@ const refreshAll = async () => {
 }
 
 onMounted(async () => {
+  loadPrescriptions()
   const query = new URLSearchParams(window.location.search)
   if (window.location.pathname === '/success') {
     window.history.replaceState({}, '', `/payment-success${window.location.search}`)
@@ -946,7 +1336,7 @@ onMounted(async () => {
         <header class="mb-8 flex items-center justify-between">
           <div>
             <h2 class="text-3xl font-semibold tracking-tight">{{ navItems.find((item) => item.key === activeView)?.label }}</h2>
-            <p class="mt-1 text-sm text-[#5f6368]">Google Stitch-inspired layout with spacing-first clinical clarity.</p>
+            <p class="mt-1 text-sm text-[#5f6368]"></p>
           </div>
 
           <div class="flex items-center gap-3">
@@ -963,17 +1353,40 @@ onMounted(async () => {
         </header>
 
         <section v-if="activeView === 'inventory'" class="rounded-2xl border border-[#E8EAED] bg-white p-6">
-          <div class="mb-6 flex items-center gap-2">
-            <Pill class="h-5 w-5 text-[#1a73e8]" />
-            <h3 class="text-lg font-semibold">Drug Inventory</h3>
+          <div class="mb-6 flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <Pill class="h-5 w-5 text-[#1a73e8]" />
+              <h3 class="text-lg font-semibold">Drug Inventory</h3>
+            </div>
+            <button
+              class="inline-flex items-center gap-2 rounded-lg bg-[#1a73e8] px-3 py-2 text-sm font-medium text-white hover:bg-[#1765cc]"
+              @click="openAddDrugModal"
+            >
+              <Plus class="h-4 w-4" />
+              Add New Drug
+            </button>
+          </div>
+          <div class="mb-4">
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-[#5f6368]">
+              Search Drug
+            </label>
+            <input
+              v-model="inventorySearch"
+              class="w-full rounded-lg border border-[#DADCE0] px-3 py-2 text-sm focus:border-[#1a73e8] focus:outline-none"
+              placeholder="Search by drug name..."
+            />
           </div>
 
           <p v-if="loadingInventory" class="text-sm text-[#5f6368]">Loading inventory...</p>
           <p v-else-if="!inventoryError && inventory.length === 0" class="rounded-lg bg-[#FFF8E1] p-3 text-sm text-[#7A5C00]">
-            Inventory is currently empty. The OutSystems OSUSR_iipxahjd environment requires manual
-            data bootstrapping before medication rows appear.
+            Inventory is currently empty.
           </p>
+          <p v-else-if="!inventoryError && filteredInventory.length === 0" class="rounded-lg bg-[#F8F9FA] p-3 text-sm text-[#5f6368]">
+            No drugs match your search.
+          </p>
+          <p v-else-if="inventoryNotice" class="rounded-lg bg-[#E8F0FE] p-3 text-sm text-[#1a73e8]">{{ inventoryNotice }}</p>
           <p v-else-if="inventoryError" class="rounded-lg bg-[#FDECEC] p-3 text-sm text-[#B3261E]">{{ inventoryError }}</p>
+          <p v-else-if="deletingDrugError" class="rounded-lg bg-[#FDECEC] p-3 text-sm text-[#B3261E]">{{ deletingDrugError }}</p>
 
           <div v-else class="overflow-hidden rounded-xl border border-[#E8EAED]">
             <table class="min-w-full divide-y divide-[#E8EAED] text-sm">
@@ -982,14 +1395,64 @@ onMounted(async () => {
                   <th class="px-4 py-3 font-medium">Drug</th>
                   <th class="px-4 py-3 font-medium">Stock</th>
                   <th class="px-4 py-3 font-medium">Price (SGD)</th>
+                  <th class="px-4 py-3 font-medium">Action</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-[#F1F3F4] bg-white">
-                <tr v-for="(drug, idx) in inventory" :key="drug.id ?? idx" class="hover:bg-[#F8F9FA]">
-                  <td class="px-4 py-3">{{ drug.name ?? drug.drug_name ?? 'Unnamed Drug' }}</td>
-                  <td class="px-4 py-3">{{ drug.quantity ?? drug.stock ?? 0 }}</td>
-                  <td class="px-4 py-3">{{ Number(drug.price ?? 0).toFixed(2) }}</td>
-                </tr>
+                <template v-for="(drug, idx) in filteredInventory" :key="drug.drugId ?? idx">
+                  <tr class="hover:bg-[#F8F9FA]">
+                    <td class="px-4 py-3">{{ drug.drugName || 'Unnamed Drug' }}</td>
+                    <td class="px-4 py-3">{{ drug.quantity ?? 0 }}</td>
+                    <td class="px-4 py-3">{{ Number(drug.price ?? 0).toFixed(2) }}</td>
+                    <td class="px-4 py-3">
+                      <div class="flex flex-wrap items-center gap-2">
+                        <button
+                          class="inline-flex items-center gap-1 rounded-lg border border-[#DADCE0] px-2.5 py-1.5 text-xs font-medium text-[#202124] hover:bg-[#F1F3F4]"
+                          @click="openEditDrugModal(drug)"
+                        >
+                          <SquarePen class="h-3.5 w-3.5" />
+                          Edit
+                        </button>
+                        <button
+                          class="inline-flex items-center gap-1 rounded-lg border border-[#DADCE0] px-2.5 py-1.5 text-xs font-medium text-[#1a73e8] hover:bg-[#E8F0FE]"
+                          @click="toggleDrugDetails(drug.drugId)"
+                        >
+                          <ChevronUp v-if="isDrugExpanded(drug.drugId)" class="h-3.5 w-3.5" />
+                          <ChevronDown v-else class="h-3.5 w-3.5" />
+                          Details
+                        </button>
+                        <button
+                          class="inline-flex items-center gap-1 rounded-lg border border-[#F4C7C3] px-2.5 py-1.5 text-xs font-medium text-[#B3261E] hover:bg-[#FDECEC] disabled:opacity-60"
+                          :disabled="deletingDrugId === drug.drugId"
+                          @click="deleteDrug(drug)"
+                        >
+                          <LoaderCircle v-if="deletingDrugId === drug.drugId" class="h-3.5 w-3.5 animate-spin" />
+                          <Trash2 v-else class="h-3.5 w-3.5" />
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr v-if="isDrugExpanded(drug.drugId)" class="bg-[#F8F9FA]">
+                    <td colspan="4" class="px-4 py-3">
+                      <p class="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[#1a73e8]">Drug Details</p>
+                      <div class="grid gap-3 md:grid-cols-3">
+                        <div>
+                          <p class="text-xs font-semibold uppercase tracking-[0.08em] text-[#5f6368]">Purpose</p>
+                          <p class="mt-1 text-sm text-[#202124]">{{ drug.purpose || 'N/A' }}</p>
+                        </div>
+                        <div>
+                          <p class="text-xs font-semibold uppercase tracking-[0.08em] text-[#5f6368]">Recommended Dosage</p>
+                          <p class="mt-1 text-sm text-[#202124]">{{ drug.dosage || 'N/A' }}</p>
+                        </div>
+                        <div>
+                          <p class="text-xs font-semibold uppercase tracking-[0.08em] text-[#5f6368]">Remarks</p>
+                          <p class="mt-1 text-sm text-[#202124]">{{ drug.remarks || 'None' }}</p>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                </template>
               </tbody>
             </table>
           </div>
@@ -1019,6 +1482,22 @@ onMounted(async () => {
                 v-model="consultationForm.visitNotes"
                 class="rounded-lg border border-[#DADCE0] px-3 py-2 text-sm"
                 placeholder="visitNotes"
+              />
+              <select
+                v-model="consultationForm.prescribedDrugId"
+                class="rounded-lg border border-[#DADCE0] px-3 py-2 text-sm"
+              >
+                <option value="">Select Prescribed Drug</option>
+                <option v-for="drug in inventory" :key="drug.drugId" :value="String(drug.drugId)">
+                  {{ drug.drugName }} (Stock: {{ drug.quantity }})
+                </option>
+              </select>
+              <input
+                v-model.number="consultationForm.prescribedQuantity"
+                type="number"
+                min="1"
+                class="rounded-lg border border-[#DADCE0] px-3 py-2 text-sm"
+                placeholder="Prescribed Quantity"
               />
             </div>
             <div class="mt-5 rounded-2xl border border-[#E8EAED] bg-[#F8F9FA] p-4">
@@ -1253,6 +1732,10 @@ onMounted(async () => {
                     <th class="px-4 py-3 font-medium">Patient</th>
                     <th class="px-4 py-3 font-medium">NRIC</th>
                     <th class="px-4 py-3 font-medium">VisitNotes</th>
+                    <th class="px-4 py-3 font-medium">Drug</th>
+                    <th class="px-4 py-3 font-medium">Qty</th>
+                    <th class="px-4 py-3 font-medium">Unit Price (SGD)</th>
+                    <th class="px-4 py-3 font-medium">Total (SGD)</th>
                     <th class="px-4 py-3 font-medium">Action</th>
                   </tr>
                 </thead>
@@ -1262,6 +1745,10 @@ onMounted(async () => {
                     <td class="px-4 py-3">{{ row.patientName }}</td>
                     <td class="px-4 py-3">{{ row.nric }}</td>
                     <td class="px-4 py-3">{{ row.VisitNotes || 'N/A' }}</td>
+                    <td class="px-4 py-3">{{ row.prescribedDrugName }}</td>
+                    <td class="px-4 py-3">{{ row.prescribedQty }}</td>
+                    <td class="px-4 py-3">{{ Number(row.unitPrice ?? 0).toFixed(2) }}</td>
+                    <td class="px-4 py-3">{{ Number(row.totalAmount ?? 0).toFixed(2) }}</td>
                     <td class="px-4 py-3">
                       <button
                         class="rounded-lg bg-[#1a73e8] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#1765cc] disabled:cursor-not-allowed disabled:opacity-60"
@@ -1372,6 +1859,168 @@ onMounted(async () => {
           </div>
         </section>
       </main>
+    </div>
+
+    <div v-if="addDrugModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4">
+      <div class="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+        <div class="mb-5 flex items-center justify-between">
+          <h3 class="text-xl font-semibold">Add New Drug</h3>
+          <button class="rounded-lg p-2 hover:bg-[#F1F3F4]" @click="closeAddDrugModal">
+            <X class="h-4 w-4" />
+          </button>
+        </div>
+
+        <div class="grid gap-4">
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-[#5f6368]">Drug Name</label>
+            <input
+              v-model="addDrugForm.drugName"
+              class="w-full rounded-lg border border-[#DADCE0] px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-[#5f6368]">Unit Price ($)</label>
+            <input
+              v-model.number="addDrugForm.price"
+              type="number"
+              min="0.01"
+              step="0.01"
+              class="w-full rounded-lg border border-[#DADCE0] px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-[#5f6368]">Stock Quantity</label>
+            <input
+              v-model.number="addDrugForm.quantity"
+              type="number"
+              min="0"
+              class="w-full rounded-lg border border-[#DADCE0] px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-[#5f6368]">Purpose (Optional)</label>
+            <input
+              :value="addDrugForm.purpose"
+              @input="updateAddDrugField('purpose', $event.target.value)"
+              class="w-full rounded-lg border border-[#DADCE0] px-3 py-2 text-sm"
+              placeholder="e.g. Pain relief"
+            />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-[#5f6368]">Recommended Dosage (Optional)</label>
+            <input
+              :value="addDrugForm.dosage"
+              @input="updateAddDrugField('dosage', $event.target.value)"
+              class="w-full rounded-lg border border-[#DADCE0] px-3 py-2 text-sm"
+              placeholder="e.g. 3 times a day"
+            />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-[#5f6368]">Remarks (Optional)</label>
+            <textarea
+              :value="addDrugForm.remarks"
+              @input="updateAddDrugField('remarks', $event.target.value)"
+              rows="3"
+              class="w-full rounded-lg border border-[#DADCE0] px-3 py-2 text-sm"
+              placeholder="Any notes for pharmacy staff"
+            ></textarea>
+          </div>
+        </div>
+
+        <p v-if="addDrugError" class="mt-4 rounded-lg bg-[#FDECEC] p-3 text-sm text-[#B3261E]">{{ addDrugError }}</p>
+
+        <div class="mt-5 flex justify-end gap-3">
+          <button class="rounded-lg border border-[#DADCE0] px-4 py-2 text-sm" @click="closeAddDrugModal">Cancel</button>
+          <button
+            class="inline-flex items-center gap-2 rounded-lg bg-[#1a73e8] px-4 py-2 text-sm font-medium text-white hover:bg-[#1765cc] disabled:opacity-60"
+            :disabled="addingDrug"
+            @click="submitAddDrug"
+          >
+            <LoaderCircle v-if="addingDrug" class="h-4 w-4 animate-spin" />
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="editDrugModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4">
+      <div class="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+        <div class="mb-5 flex items-center justify-between">
+          <h3 class="text-xl font-semibold">Edit Drug</h3>
+          <button class="rounded-lg p-2 hover:bg-[#F1F3F4]" @click="closeEditDrugModal">
+            <X class="h-4 w-4" />
+          </button>
+        </div>
+
+        <div class="grid gap-4">
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-[#5f6368]">Drug Name</label>
+            <input
+              :value="editDrugForm.drugName"
+              disabled
+              class="w-full rounded-lg border border-[#DADCE0] bg-[#F8F9FA] px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-[#5f6368]">Unit Price ($)</label>
+            <input
+              v-model.number="editDrugForm.price"
+              type="number"
+              min="0.01"
+              step="0.01"
+              class="w-full rounded-lg border border-[#DADCE0] px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-[#5f6368]">Stock Quantity</label>
+            <input
+              v-model.number="editDrugForm.quantity"
+              type="number"
+              min="0"
+              class="w-full rounded-lg border border-[#DADCE0] px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-[#5f6368]">Purpose (Optional)</label>
+            <input
+              :value="editDrugForm.purpose"
+              @input="updateEditDrugField('purpose', $event.target.value)"
+              class="w-full rounded-lg border border-[#DADCE0] px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-[#5f6368]">Recommended Dosage (Optional)</label>
+            <input
+              :value="editDrugForm.dosage"
+              @input="updateEditDrugField('dosage', $event.target.value)"
+              class="w-full rounded-lg border border-[#DADCE0] px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-[#5f6368]">Remarks (Optional)</label>
+            <textarea
+              :value="editDrugForm.remarks"
+              @input="updateEditDrugField('remarks', $event.target.value)"
+              rows="3"
+              class="w-full rounded-lg border border-[#DADCE0] px-3 py-2 text-sm"
+            ></textarea>
+          </div>
+        </div>
+
+        <p v-if="editDrugError" class="mt-4 rounded-lg bg-[#FDECEC] p-3 text-sm text-[#B3261E]">{{ editDrugError }}</p>
+
+        <div class="mt-5 flex justify-end gap-3">
+          <button class="rounded-lg border border-[#DADCE0] px-4 py-2 text-sm" @click="closeEditDrugModal">Cancel</button>
+          <button
+            class="inline-flex items-center gap-2 rounded-lg bg-[#1a73e8] px-4 py-2 text-sm font-medium text-white hover:bg-[#1765cc] disabled:opacity-60"
+            :disabled="editingDrug"
+            @click="submitEditDrug"
+          >
+            <LoaderCircle v-if="editingDrug" class="h-4 w-4 animate-spin" />
+            Update
+          </button>
+        </div>
+      </div>
     </div>
 
     <div v-if="patientModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4">
