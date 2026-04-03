@@ -1,21 +1,22 @@
-from typing import Optional
+from typing import Optional, List
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
 
-class PrescriptionCreate(BaseModel):
+
+class DrugItem(BaseModel):
+    """Schema for a single drug in a prescription."""
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
-    record_id: Optional[int] = None
     drug_id: int
+    drug_name: str
     quantity: int
-    dosage: str = Field(min_length=1, max_length=255)
 
-    @field_validator("record_id", "drug_id")
+    @field_validator("drug_id")
     @classmethod
-    def validate_positive_ids(cls, v: Optional[int]) -> Optional[int]:
-        if v is not None and v <= 0:
-            raise ValueError("ID values must be positive integers")
+    def validate_drug_id(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("drugId must be a positive integer")
         return v
 
     @field_validator("quantity")
@@ -25,19 +26,40 @@ class PrescriptionCreate(BaseModel):
             raise ValueError("Quantity must be greater than 0")
         return v
 
-    @field_validator("dosage")
+    @field_validator("drug_name")
     @classmethod
-    def validate_dosage(cls, v: str) -> str:
+    def validate_drug_name(cls, v: str) -> str:
         if not v or not v.strip():
-            raise ValueError("Dosage cannot be empty or contain only whitespace")
+            raise ValueError("drugName cannot be empty")
         return v.strip()
+
+
+class PrescriptionCreate(BaseModel):
+    """Schema for creating a prescription with multiple drugs."""
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    record_id: int
+    drugs: List[DrugItem]
+
+    @field_validator("record_id")
+    @classmethod
+    def validate_record_id(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("recordId must be a positive integer")
+        return v
+
+    @field_validator("drugs")
+    @classmethod
+    def validate_drugs(cls, v: List[DrugItem]) -> List[DrugItem]:
+        if not v:
+            raise ValueError("drugs list cannot be empty")
+        return v
 
 
 class PrescriptionUpdate(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
     quantity: Optional[int] = None
-    dosage: Optional[str] = None
 
     @field_validator("quantity")
     @classmethod
@@ -46,20 +68,22 @@ class PrescriptionUpdate(BaseModel):
             raise ValueError("Quantity must be greater than 0")
         return v
 
-    @field_validator("dosage")
-    @classmethod
-    def validate_dosage(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None:
-            if not v or not v.strip():
-                raise ValueError("Dosage cannot be empty or contain only whitespace")
-            return v.strip()
-        return v
 
-
-class PrescriptionResponse(BaseModel):
+class PrescriptionItemResponse(BaseModel):
+    """Response for a single prescription item (drug)."""
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, from_attributes=True)
+
     prescription_id: int
     record_id: int
     drug_id: int
+    drug_name: str
     quantity: int
-    dosage: str
+
+
+class PrescriptionResponse(BaseModel):
+    """Response for a prescription with all its drugs."""
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    prescription_id: int
+    record_id: int
+    drugs: List[dict]
