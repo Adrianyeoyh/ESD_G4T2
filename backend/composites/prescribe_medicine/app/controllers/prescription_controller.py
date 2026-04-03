@@ -1,6 +1,7 @@
 from flask import jsonify, request
 from requests.exceptions import RequestException
 
+from app.clients.base import OrchestrationError, ExternalResponseError
 from app.services.prescription_service import PrescribeMedicineService
 from utils.exceptions import (
     AppError,
@@ -150,6 +151,10 @@ def prescribe_medicine(record_id: int):
         return handle_not_found_error(e)
     except ConflictError as e:
         return handle_conflict_error(e)
+    except OrchestrationError as e:
+        return jsonify({"error": e.error_code, "message": str(e)}), e.status_code
+    except ExternalResponseError as e:
+        return jsonify({"error": "EXTERNAL_ERROR", "message": str(e)}), 502
     except AppError as e:
         return handle_app_error(e)
     except RequestException as e:
