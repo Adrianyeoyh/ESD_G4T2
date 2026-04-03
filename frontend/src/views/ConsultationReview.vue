@@ -9,7 +9,7 @@ const ENDPOINTS = {
   consultationBase:
     import.meta.env.VITE_CONSULTATION_BASE || '/consultation-api',
   prescribeMedicineBase:
-    import.meta.env.VITE_PRESCRIBE_MEDICINE_BASE || 'http://localhost:5007',
+    import.meta.env.VITE_PRESCRIBE_MEDICINE_BASE || '/prescribe',
 }
 
 const CONSULTATION_DRAFT_KEY = 'consultation:pending-draft'
@@ -165,7 +165,7 @@ const confirmSubmission = async () => {
     }
 
     const prescribeResponse = await fetch(
-      `${ENDPOINTS.prescribeMedicineBase.replace(/\/$/, '')}/prescribe/${encodeURIComponent(String(recordId))}`,
+      `${ENDPOINTS.prescribeMedicineBase.replace(/\/$/, '')}/${encodeURIComponent(String(recordId))}`,
       {
         method: 'POST',
         headers: {

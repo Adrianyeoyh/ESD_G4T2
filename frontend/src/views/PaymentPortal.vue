@@ -83,7 +83,7 @@ const startPayment = async () => {
 
   try {
     // Stop 1: Initial Request to local billing orchestration service.
-    const stop1Response = await billingApi.post('/make_payment/initiate-payment', {
+    const stop1Response = await billingApi.post('/initiate-payment', {
       invoiceId: Number(invoiceId.value),
     })
 

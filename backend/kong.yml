@@ -34,6 +34,14 @@ services:
           - /payments
         strip_path: false
 
+  - name: prescription-service
+    url: http://prescription_service:5005
+    routes:
+      - name: prescription-route
+        paths:
+          - /prescription
+        strip_path: false
+
   - name: prescribe-medicine
     url: http://prescribe_medicine:5007
     routes:
