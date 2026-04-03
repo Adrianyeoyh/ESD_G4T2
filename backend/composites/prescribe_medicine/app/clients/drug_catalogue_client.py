@@ -8,10 +8,22 @@ def get_drug(drug_id: int) -> dict:
     return http_request("GET", url)
 
 
+def get_drug_by_name(drug_name: str) -> dict:
+    """Fetch a single drug by name."""
+    url = f"{settings.DRUG_CATALOGUE_URL}/drug/name/{drug_name}"
+    return http_request("GET", url)
+
+
 def get_all_drugs() -> list[dict]:
     """Fetch all drugs from the catalogue."""
     url = f"{settings.DRUG_CATALOGUE_URL}/drug"
     return http_request("GET", url)
+
+
+def update_drug_quantity(drug_id: int, quantity: int) -> dict:
+    """Update drug quantity using HTTP PUT. Returns updated drug."""
+    url = f"{settings.DRUG_CATALOGUE_URL}/drug/{drug_id}"
+    return http_request("PUT", url, {"quantity": quantity})
 
 
 def deduct_stock(drug_id: int, amount: int) -> dict:

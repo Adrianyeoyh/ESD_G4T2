@@ -22,6 +22,12 @@ def get_all_drugs(service: DrugService = Depends(get_drug_service)):
     return service.list_drugs()
 
 
+@router.get("/name/{drug_name}", response_model=DrugResponse)
+def get_drug_by_name(drug_name: str, service: DrugService = Depends(get_drug_service)):
+    """Get a drug by its name (case-insensitive)."""
+    return service.get_drug_by_name(drug_name)
+
+
 @router.get("/{drug_id}", response_model=DrugResponse)
 def get_drug(drug_id: int, service: DrugService = Depends(get_drug_service)):
     return service.get_drug(drug_id)
