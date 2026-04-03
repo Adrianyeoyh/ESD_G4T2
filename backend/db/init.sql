@@ -21,8 +21,7 @@ CREATE TABLE IF NOT EXISTS prescription_schema.prescription (
     "prescriptionId" SERIAL PRIMARY KEY,
     "recordId"       INTEGER      NOT NULL,
     "drugId"         INTEGER      NOT NULL,
-    quantity          INTEGER      NOT NULL,
-    dosage            VARCHAR(255) NOT NULL,
-    CONSTRAINT ck_prescription_quantity_positive CHECK (quantity > 0),
-    CONSTRAINT ck_prescription_dosage_not_blank CHECK (length(trim(dosage)) > 0)
+    "drugName"       VARCHAR(255) NOT NULL,
+    quantity         INTEGER      NOT NULL,
+    CONSTRAINT ck_prescription_quantity_positive CHECK (quantity > 0)
 );

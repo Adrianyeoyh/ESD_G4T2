@@ -53,19 +53,19 @@ class PrescribeMedicineService:
 
         return failures
 
-    def prescribe_medicine(self, record_id: int, items: list[dict]):
+    def prescribe_medicine(self, record_id: int, drugs: list[dict]):
         """
         Process prescription workflow.
         
         Args:
             record_id: Clinical record ID from URL
-            items: List of dicts with drugName and quantity
+            drugs: List of dicts with drugName and quantity
             
         Returns:
             Dict with recordId, drugs list, totalPrice, status
         """
-        if not items:
-            raise ValidationError("At least one medicine item is required")
+        if not drugs:
+            raise ValidationError("At least one drug is required")
 
         # Track for rollback and response
         drugs_list = []
@@ -74,10 +74,10 @@ class PrescribeMedicineService:
         created_prescription_id = None
 
         try:
-            # Step 1: For each drug, lookup by name and update quantity via HTTP PUT
-            for item in items:
-                drug_name = item["drugName"]
-                quantity = item["quantity"]
+            # Step 1: For each drug, lookup by name and update quantity
+            for drug_item in drugs:
+                drug_name = drug_item["drugName"]
+                quantity = drug_item["quantity"]
 
                 # Get drug details by name
                 drug = drug_catalogue_client.get_drug_by_name(drug_name)
@@ -136,11 +136,10 @@ class PrescribeMedicineService:
             for drug in drugs_list:
                 drug["prescriptionId"] = created_prescription_id
 
-            # Step 3: Create invoice with recordId, totalPrice, paid=false
+            # Step 3: Create invoice with recordId and total
             invoice = invoice_client.create_invoice(
                 record_id=record_id,
-                total_price=str(total_price),
-                paid=False
+                total=str(total_price)
             )
 
             # Step 4: Return successful result

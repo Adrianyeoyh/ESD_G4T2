@@ -26,14 +26,14 @@ def prescribe_medicine(record_id: int):
     POST /prescribe/<record_id>
     
     Composite service that orchestrates the prescription workflow:
-    1. For each drug in items: lookup by name, update quantity via HTTP PUT
+    1. For each drug: lookup by name, update quantity via HTTP PUT
     2. Create prescription with recordId and list of drugs (drugId, drugName, quantity)
     3. Compute total price
-    4. Create invoice with recordId, totalPrice, paid=false
+    4. Create invoice with recordId and total
     
     Request body:
     {
-        "items": [
+        "drugs": [
             {
                 "drugName": "Ibuprofen",
                 "quantity": 2
@@ -68,43 +68,43 @@ def prescribe_medicine(record_id: int):
         if not data:
             raise ValidationError("Request body is required")
 
-        if "items" not in data:
-            raise ValidationError("'items' field is required in request body")
+        if "drugs" not in data:
+            raise ValidationError("'drugs' field is required in request body")
 
-        if not isinstance(data["items"], list):
-            raise ValidationError("'items' must be an array")
+        if not isinstance(data["drugs"], list):
+            raise ValidationError("'drugs' must be an array")
 
-        if not data["items"]:
-            raise ValidationError("'items' array cannot be empty")
+        if not data["drugs"]:
+            raise ValidationError("'drugs' array cannot be empty")
 
-        # Validate and normalize each item
-        normalized_items = []
-        for idx, item in enumerate(data["items"]):
-            if not isinstance(item, dict):
-                raise ValidationError(f"items[{idx}] must be an object")
+        # Validate and normalize each drug
+        normalized_drugs = []
+        for idx, drug in enumerate(data["drugs"]):
+            if not isinstance(drug, dict):
+                raise ValidationError(f"drugs[{idx}] must be an object")
 
             # Check required fields
             required_fields = ["drugName", "quantity"]
-            missing_fields = [f for f in required_fields if f not in item]
+            missing_fields = [f for f in required_fields if f not in drug]
             if missing_fields:
                 raise ValidationError(
-                    f"items[{idx}] missing required fields: {', '.join(missing_fields)}"
+                    f"drugs[{idx}] missing required fields: {', '.join(missing_fields)}"
                 )
 
             # Validate drugName
-            drug_name = str(item["drugName"]).strip()
+            drug_name = str(drug["drugName"]).strip()
             if not drug_name:
-                raise ValidationError(f"items[{idx}].drugName cannot be empty")
+                raise ValidationError(f"drugs[{idx}].drugName cannot be empty")
 
             # Validate and convert quantity
             try:
-                quantity = int(item["quantity"])
+                quantity = int(drug["quantity"])
                 if quantity <= 0:
                     raise ValueError("quantity must be positive")
             except (TypeError, ValueError):
-                raise ValidationError(f"items[{idx}].quantity must be a positive integer")
+                raise ValidationError(f"drugs[{idx}].quantity must be a positive integer")
 
-            normalized_items.append({
+            normalized_drugs.append({
                 "drugName": drug_name,
                 "quantity": quantity,
             })
@@ -112,7 +112,7 @@ def prescribe_medicine(record_id: int):
         # Call service to process prescription
         result = service.prescribe_medicine(
             record_id=record_id,
-            items=normalized_items,
+            drugs=normalized_drugs,
         )
 
         # Return success response
