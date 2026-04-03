@@ -31,18 +31,58 @@ class DrugService:
         drug = self.repo.create(
             drug_data.drug_name,
             drug_data.quantity,
-            drug_data.price
+            drug_data.price,
+            drug_data.purpose,
+            drug_data.recommended_dosage,
+            drug_data.remarks,
         )
         self.db.commit()
         self.db.refresh(drug)
         return drug
 
-    def update_quantity(self, drug_id: int, new_quantity: int):
-        if new_quantity < 0:
+    def update_drug(
+        self,
+        drug_id: int,
+        quantity: int | None,
+        price,
+        purpose: str | None,
+        recommended_dosage: str | None,
+        remarks: str | None,
+        provided_fields: set[str] | None = None,
+    ):
+        provided_fields = provided_fields or set()
+        if (
+            "quantity" not in provided_fields
+            and "price" not in provided_fields
+            and "purpose" not in provided_fields
+            and "recommended_dosage" not in provided_fields
+            and "remarks" not in provided_fields
+        ):
+            raise ValidationError(
+                "At least one field (quantity, price, purpose, recommendedDosage, remarks) must be provided"
+            )
+
+        if "quantity" in provided_fields and quantity is None:
+            raise ValidationError("Quantity cannot be null")
+        if quantity is not None and quantity < 0:
             raise ValidationError("Quantity must be a non-negative integer")
 
+        if "price" in provided_fields and price is None:
+            raise ValidationError("Price cannot be null")
+        if price is not None and price <= 0:
+            raise ValidationError("Price must be greater than 0")
+
         drug = self.get_drug(drug_id)
-        drug.quantity = new_quantity
+        if "quantity" in provided_fields:
+            drug.quantity = quantity
+        if "price" in provided_fields:
+            drug.price = price
+        if "purpose" in provided_fields:
+            drug.purpose = purpose
+        if "recommended_dosage" in provided_fields:
+            drug.recommended_dosage = recommended_dosage
+        if "remarks" in provided_fields:
+            drug.remarks = remarks
         self.repo.save(drug)
         self.db.commit()
         self.db.refresh(drug)
