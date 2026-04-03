@@ -20,6 +20,15 @@ class DrugService:
             raise NotFoundError(f"Drug with ID {drug_id} not found in catalogue")
         return drug
 
+    def get_drug_by_name(self, drug_name: str):
+        if not drug_name or not drug_name.strip():
+            raise ValidationError("Drug name cannot be empty")
+        
+        drug = self.repo.get_by_name(drug_name.strip())
+        if not drug:
+            raise NotFoundError(f"Drug with name '{drug_name}' not found in catalogue")
+        return drug
+
     def add_drug(self, drug_data: DrugCreate):
         # Check for duplicate drug name (case-insensitive)
         existing_drug = self.repo.get_by_name(drug_data.drug_name)

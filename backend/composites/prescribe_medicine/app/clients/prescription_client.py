@@ -2,8 +2,17 @@ from app.config import settings
 from app.clients.base import http_request, AppError
 
 
-def create_prescription(record_id: int, drug_id: int, quantity: int, dosage: str) -> dict:
-    """Create a prescription record."""
+def create_prescription(record_id: int, drugs: list[dict]) -> dict:
+    """
+    Create a prescription record with multiple drugs.
+    
+    Args:
+        record_id: The clinical record ID
+        drugs: List of dicts with drugId, drugName, quantity
+    
+    Returns:
+        Created prescription response
+    """
     service_url = (settings.PRESCRIPTION_SERVICE_URL or "").strip()
     if not service_url:
         raise AppError("Prescription service URL is not configured")
@@ -11,9 +20,7 @@ def create_prescription(record_id: int, drug_id: int, quantity: int, dosage: str
     url = f"{service_url}/prescription"
     return http_request("POST", url, {
         "recordId": record_id,
-        "drugId": drug_id,
-        "quantity": quantity,
-        "dosage": dosage,
+        "drugs": drugs,
     })
 
 

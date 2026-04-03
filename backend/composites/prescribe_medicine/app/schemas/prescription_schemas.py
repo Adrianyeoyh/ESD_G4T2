@@ -1,35 +1,28 @@
 """
 Request/Response validation schemas for the prescribe medicine composite service
 """
-from typing import Optional, List
+from typing import List
 
 
 class MedicinePrescriptionItem:
     """Schema for a single medicine prescription item"""
-    def __init__(self, drug_id: int, quantity: int, dosage: str):
-        self.drug_id = drug_id
+    def __init__(self, drug_name: str, quantity: int):
+        self.drug_name = drug_name
         self.quantity = quantity
-        self.dosage = dosage
 
     @staticmethod
     def validate(item: dict) -> None:
         """Validate prescription item"""
-        required = ["drugId", "quantity", "dosage"]
+        required = ["drugName", "quantity"]
         for field in required:
             if field not in item:
                 raise ValueError(f"Missing required field: {field}")
 
-        if not isinstance(item["drugId"], int) or item["drugId"] <= 0:
-            raise ValueError("drugId must be a positive integer")
+        if not isinstance(item["drugName"], str) or not item["drugName"].strip():
+            raise ValueError("drugName must be a non-empty string")
 
         if not isinstance(item["quantity"], int) or item["quantity"] <= 0:
             raise ValueError("quantity must be a positive integer")
-
-        if not isinstance(item["dosage"], str) or not item["dosage"].strip():
-            raise ValueError("dosage must be a non-empty string")
-
-        if len(item["dosage"]) > 255:
-            raise ValueError("dosage exceeds maximum length (255 characters)")
 
 
 class PrescribeMedicineRequest:
@@ -68,33 +61,24 @@ class PrescribeMedicineResponse:
                 "type": "integer",
                 "description": "Clinical record ID"
             },
-            "patientId": {
-                "type": ["integer", "null"],
-                "description": "Patient ID from clinical record"
-            },
-            "items": {
+            "drugs": {
                 "type": "array",
-                "description": "List of prescribed medicines",
+                "description": "List of prescribed drugs",
                 "items": {
                     "type": "object",
                     "properties": {
                         "drugId": {"type": "integer"},
                         "drugName": {"type": "string"},
                         "quantity": {"type": "integer"},
-                        "dosage": {"type": "string"},
                         "unitPrice": {"type": "string"},
                         "lineTotal": {"type": "string"},
-                        "prescriptionId": {"type": "string"}
+                        "prescriptionId": {"type": "integer"}
                     }
                 }
             },
-            "invoice": {
-                "type": "object",
-                "description": "Invoice details from invoice service"
-            },
-            "total": {
+            "totalPrice": {
                 "type": "string",
-                "description": "Total amount as decimal string"
+                "description": "Total price as decimal string"
             },
             "status": {
                 "type": "string",
@@ -102,7 +86,7 @@ class PrescribeMedicineResponse:
                 "description": "Operation status"
             }
         },
-        "required": ["recordId", "items", "invoice", "total", "status"]
+        "required": ["recordId", "drugs", "totalPrice", "status"]
     }
 
 
@@ -135,7 +119,7 @@ ERROR_CODES = {
         "description": "Request validation failed",
         "examples": [
             "Missing required field: items",
-            "items[0].drugId must be a positive integer",
+            "items[0].drugName must be a non-empty string",
             "items array cannot be empty"
         ]
     },
@@ -143,16 +127,14 @@ ERROR_CODES = {
         "status": 404,
         "description": "Resource not found",
         "examples": [
-            "Clinical record 1234 not found",
-            "Drug with id 999 not found"
+            "Drug 'InvalidDrug' not found in catalogue"
         ]
     },
     "CONFLICT": {
         "status": 409,
         "description": "Resource state conflict",
         "examples": [
-            "Insufficient stock for drug 123. Available: 5, Requested: 10",
-            "Cannot prescribe for closed clinical record 1234"
+            "Insufficient stock for 'Ibuprofen'. Available: 5, Requested: 10"
         ]
     },
     "APPLICATION_ERROR": {
@@ -160,7 +142,7 @@ ERROR_CODES = {
         "description": "Application error",
         "examples": [
             "Failed to update drug stock",
-            "Clinical record service unavailable"
+            "Prescription service unavailable"
         ]
     },
     "DOWNSTREAM_TIMEOUT": {
