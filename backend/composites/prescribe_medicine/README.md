@@ -49,7 +49,7 @@ Physician prescribes medications to a patient for a clinical record.
 ```json
 {
   "recordId": 1234,
-  "patientId": 5678,
+  "patientId": "P5678",
   "items": [
     {
       "drugId": 1,
@@ -73,7 +73,7 @@ Physician prescribes medications to a patient for a clinical record.
   "invoice": {
     "invoiceId": "INV-789",
     "recordId": 1234,
-    "patientId": 5678,
+    "patientId": "P5678",
     "total": "25.00",
     "status": "UNPAID"
   },

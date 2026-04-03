@@ -50,7 +50,7 @@ def prescribe_medicine(record_id: int):
     Success Response (201):
     {
         "recordId": 1234,
-        "patientId": 1234,
+        "patientId": "P1234",
         "items": [
             {
                 "drugId": 123,

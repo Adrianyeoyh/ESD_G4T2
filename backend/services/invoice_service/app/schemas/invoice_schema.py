@@ -1,36 +1,43 @@
-from pydantic import BaseModel, ConfigDict, field_serializer
-from pydantic.alias_generators import to_camel
+from pydantic import field_serializer
 from typing import Optional
 from decimal import Decimal
 from datetime import datetime
 
+# Import standardized base schemas
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent.parent))
+from common.schemas.base_schema import StrictCamelBaseModel, ORMCamelBaseModel
 
-class InvoiceCreate(BaseModel):
+
+class InvoiceCreate(StrictCamelBaseModel):
+    """
+    Schema for creating invoices.
+    
+    ✅ Strict validation: extra fields (e.g., patientId, prescriptions) will be rejected.
+    This prevents silent data loss from payload mismatches.
+    """
     record_id: int
     total: Decimal
 
-    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
-
-class InvoiceUpdateTotal(BaseModel):
+class InvoiceUpdateTotal(StrictCamelBaseModel):
+    """Schema for updating invoice total."""
     total: Decimal
 
-    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
-
-class InvoiceResponse(BaseModel):
+class InvoiceResponse(ORMCamelBaseModel):
+    """
+    Schema for invoice responses.
+    
+    Includes ORM compatibility (from_attributes=True) and strict validation.
+    """
     invoice_id: int
     record_id: int
     total: Decimal
     status: str
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-
-    model_config = ConfigDict(
-        alias_generator=to_camel,
-        populate_by_name=True,
-        from_attributes=True,   # replaces orm_mode
-    )
 
     @field_serializer("status")
     def serialize_status(self, v) -> str:
