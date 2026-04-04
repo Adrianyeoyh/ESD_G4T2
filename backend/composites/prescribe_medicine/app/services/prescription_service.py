@@ -10,7 +10,7 @@ class PrescribeMedicineService:
     Orchestrates the prescribe medicine workflow.
     
     This service coordinates multiple atomic services to:
-    1. For each drug: lookup by name, update quantity via HTTP PUT
+    1. For each drug: lookup by ID, deduct quantity
     2. Create prescription with recordId and list of drugs
     3. Compute total price
     4. Create invoice with recordId, totalPrice, paid=false
@@ -59,7 +59,7 @@ class PrescribeMedicineService:
         
         Args:
             record_id: Clinical record ID from URL
-            drugs: List of dicts with drugName and quantity
+            drugs: List of dicts with drugId and quantity
             
         Returns:
             Dict with recordId, drugs list, totalPrice, status
@@ -74,25 +74,25 @@ class PrescribeMedicineService:
         created_prescription_id = None
 
         try:
-            # Step 1: For each drug, lookup by name and update quantity
+            # Step 1: For each drug, lookup by ID and update quantity
             for drug_item in drugs:
-                drug_name = drug_item["drugName"]
+                drug_id = drug_item["drugId"]
                 quantity = drug_item["quantity"]
 
-                # Get drug details by name
-                drug = drug_catalogue_client.get_drug_by_name(drug_name)
+                # Get drug details by ID
+                drug = drug_catalogue_client.get_drug(drug_id)
                 
                 if not drug:
-                    raise NotFoundError(f"Drug '{drug_name}' not found in catalogue")
+                    raise NotFoundError(f"Drug with ID {drug_id} not found in catalogue")
 
-                drug_id = drug.get("drugId")
+                drug_name = drug.get("drugName")
                 current_quantity = drug.get("quantity", 0)
                 price = Decimal(str(drug.get("price", 0)))
 
                 # Check if sufficient stock
                 if current_quantity < quantity:
                     raise ValidationError(
-                        f"Insufficient stock for '{drug_name}'. "
+                        f"Insufficient stock for drug {drug_id}. "
                         f"Available: {current_quantity}, Requested: {quantity}"
                     )
 
