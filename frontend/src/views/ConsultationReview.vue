@@ -33,7 +33,10 @@ const selectedDrugTotal = computed(() =>
 )
 
 const composedVisitNotes = computed(() => {
-  const rawNotes = String(consultationDraft.value?.visitNotes || '').trim()
+  let rawNotes = String(consultationDraft.value?.visitNotes || '').trim()
+  // Replace escaped newlines with actual newlines
+  rawNotes = rawNotes.replace(/\\n/g, '\n')
+  
   const drugs = selectedDrugs.value
 
   if (!drugs.length) {
@@ -44,7 +47,7 @@ const composedVisitNotes = computed(() => {
     .map((drug) => `- ${drug.name} x${drug.quantity} (available ${drug.availableQuantity})`)
     .join('\n')
 
-  return [rawNotes, 'Prescribed Drugs:', drugSummary].filter(Boolean).join('\n\n')
+  return [rawNotes, 'Prescribed Drugs:', drugSummary].filter(Boolean).join(' ')
 })
 
 const loadDraft = () => {
@@ -100,8 +103,11 @@ const confirmSubmission = async () => {
   reviewError.value = ''
   reviewSuccess.value = ''
 
+  let visitNotes = String(composedVisitNotes.value || '').trim()
+  // Remove literal \n escape sequences and replace actual newlines with spaces for API payload
+  visitNotes = visitNotes.replace(/\\n/g, ' ').replace(/\n/g, ' ')
+  
   const patientId = String(consultationDraft.value?.patientId || '').trim()
-  const visitNotes = String(composedVisitNotes.value || '').trim()
   const selectedDrugItems = selectedDrugs.value
     .map((drug) => ({
       drugName: String(drug.name || '').trim(),
@@ -237,7 +243,7 @@ onMounted(loadDraft)
                 <p class="text-xs font-semibold uppercase tracking-[0.14em] text-[#5f6368]">Patient ID</p>
                 <p class="mt-1 text-lg font-semibold">{{ consultationDraft.patientId }}</p>
               </div>
-              <div class="rounded-xl bg-[#F8F9FA] p-4">
+              <div v-if="selectedDrugs.length > 0" class="rounded-xl bg-[#F8F9FA] p-4">
                 <p class="text-xs font-semibold uppercase tracking-[0.14em] text-[#5f6368]">Selected Drugs</p>
                 <p class="mt-1 text-lg font-semibold">{{ selectedDrugs.length }} items / {{ selectedDrugCount }} units</p>
               </div>
@@ -289,7 +295,7 @@ onMounted(loadDraft)
               </table>
             </div>
 
-            <p class="mt-4 text-sm text-[#5f6368]">
+            <p v-if="selectedDrugs.length > 0" class="mt-4 text-sm text-[#5f6368]">
               Estimated drug value: SGD {{ selectedDrugTotal.toFixed(2) }}
             </p>
           </div>
