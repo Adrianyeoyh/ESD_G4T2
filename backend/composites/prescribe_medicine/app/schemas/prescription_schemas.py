@@ -6,20 +6,20 @@ from typing import List
 
 class MedicinePrescriptionItem:
     """Schema for a single medicine prescription item"""
-    def __init__(self, drug_name: str, quantity: int):
-        self.drug_name = drug_name
+    def __init__(self, drug_id: int, quantity: int):
+        self.drug_id = drug_id
         self.quantity = quantity
 
     @staticmethod
     def validate(item: dict) -> None:
         """Validate prescription item"""
-        required = ["drugName", "quantity"]
+        required = ["drugId", "quantity"]
         for field in required:
             if field not in item:
                 raise ValueError(f"Missing required field: {field}")
 
-        if not isinstance(item["drugName"], str) or not item["drugName"].strip():
-            raise ValueError("drugName must be a non-empty string")
+        if not isinstance(item["drugId"], int) or item["drugId"] <= 0:
+            raise ValueError("drugId must be a positive integer")
 
         if not isinstance(item["quantity"], int) or item["quantity"] <= 0:
             raise ValueError("quantity must be a positive integer")

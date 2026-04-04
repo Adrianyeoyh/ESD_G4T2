@@ -26,7 +26,7 @@ def prescribe_medicine(record_id: int):
     POST /prescribe/<record_id>
     
     Composite service that orchestrates the prescription workflow:
-    1. For each drug: lookup by name, update quantity via HTTP PUT
+    1. For each drug: lookup by ID, deduct quantity
     2. Create prescription with recordId and list of drugs (drugId, drugName, quantity)
     3. Compute total price
     4. Create invoice with recordId and total
@@ -35,11 +35,11 @@ def prescribe_medicine(record_id: int):
     {
         "drugs": [
             {
-                "drugName": "Ibuprofen",
+                "drugId": 1,
                 "quantity": 2
             },
             {
-                "drugName": "Paracetamol",
+                "drugId": 2,
                 "quantity": 1
             }
         ]
@@ -84,17 +84,20 @@ def prescribe_medicine(record_id: int):
                 raise ValidationError(f"drugs[{idx}] must be an object")
 
             # Check required fields
-            required_fields = ["drugName", "quantity"]
+            required_fields = ["drugId", "quantity"]
             missing_fields = [f for f in required_fields if f not in drug]
             if missing_fields:
                 raise ValidationError(
                     f"drugs[{idx}] missing required fields: {', '.join(missing_fields)}"
                 )
 
-            # Validate drugName
-            drug_name = str(drug["drugName"]).strip()
-            if not drug_name:
-                raise ValidationError(f"drugs[{idx}].drugName cannot be empty")
+            # Validate drugId
+            try:
+                drug_id = int(drug["drugId"])
+                if drug_id <= 0:
+                    raise ValueError("drugId must be a positive integer")
+            except (TypeError, ValueError):
+                raise ValidationError(f"drugs[{idx}].drugId must be a positive integer")
 
             # Validate and convert quantity
             try:
@@ -105,7 +108,7 @@ def prescribe_medicine(record_id: int):
                 raise ValidationError(f"drugs[{idx}].quantity must be a positive integer")
 
             normalized_drugs.append({
-                "drugName": drug_name,
+                "drugId": drug_id,
                 "quantity": quantity,
             })
 
