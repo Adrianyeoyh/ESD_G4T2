@@ -74,16 +74,16 @@ A fully functional composite microservice that orchestrates the medication presc
 1. UI → Composite: POST /prescribe/{recordId}
    ├─ Request body with medication items
    
-2. Composite → Clinical Records: GET /clinical-record/{recordId}
+2. Composite → Clinical Records: GET /record/{recordId}
    ├─ Fetches and validates record exists and is open
    
 3. Composite → Drug Catalogue: GET /drug
    ├─ Fetches all available drugs with prices and stock
    
 4. For each prescription item:
-   a. Composite → Drug Catalogue: PUT /drug/{drugId}
-      ├─ Updates stock quantity (deducts prescribed amount)
-      ├─ Tracks previous quantity for potential rollback
+   a. Composite → Drug Catalogue: PATCH /drug/{drugId}/deduct
+      ├─ Deducts stock quantity
+      ├─ Tracks previous quantity for potential rollback (via PATCH /drug/{drugId}/restore)
    
    b. Composite → Prescription Service: POST /prescription
       ├─ Creates prescription record
@@ -178,7 +178,7 @@ PRESCRIPTION_SERVICE_URL=
 CLINICAL_RECORDS_URL=http://record_service:5006
 
 # Settings
-CLINICAL_RECORD_VALIDATE_PATH=/record/{record_id}
+CLINICAL_RECORD_VALIDATE_PATH=/record/{recordId}
 CLINICAL_RECORDS_REQUIRED=false
 HTTP_TIMEOUT_SECONDS=8
 ```

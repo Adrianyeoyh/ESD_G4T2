@@ -6,10 +6,10 @@ Composite microservice that orchestrates the medication prescription workflow by
 
 ```
 1. UI → Composite: POST /prescribe/{recordId}
-2. Composite → Clinical Records: GET /clinical-record/{recordId} [OPTIONAL]
+2. Composite → Clinical Records: GET /record/{recordId} [OPTIONAL]
 3. Clinical Records → Composite: Return record data
 4. Composite → Drug Catalogue: GET /drug (fetch all available drugs)
-5. Composite → Drug Catalogue: PUT /drug/{drugId} (update stock quantities)
+5. Composite → Drug Catalogue: PATCH /drug/{drugId}/deduct (deduct stock quantities)
 6. Drug Catalogue → Composite: Confirm stock update
 7. Composite → Prescription Service: POST /prescription (create prescription record)
 8. Prescription Service → Composite: Return prescription details
@@ -167,7 +167,7 @@ Example rollback error:
 | `INVOICE_SERVICE_URL` | `http://invoice_service:5003` | Invoice service URL |
 | `PRESCRIPTION_SERVICE_URL` | Empty | Prescription service URL |
 | `CLINICAL_RECORDS_URL` | `http://record_service:5006` | Clinical records service URL |
-| `CLINICAL_RECORD_VALIDATE_PATH` | `/record/{record_id}` | Path template for clinical records |
+| `CLINICAL_RECORD_VALIDATE_PATH` | `/record/{recordId}` | Path template for clinical records |
 | `CLINICAL_RECORDS_REQUIRED` | `false` | Whether clinical records are required |
 | `HTTP_TIMEOUT_SECONDS` | `8` | HTTP request timeout in seconds |
 

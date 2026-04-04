@@ -298,11 +298,12 @@ If rollback also fails, manual intervention is needed:
 
 2. **Check Service Health**
    ```bash
-   # Verify all downstream services
-   curl http://localhost:5001/health  # Drug catalogue
+   # Verify downstream services that have health endpoints
    curl http://localhost:5003/health  # Invoice service
-   curl http://localhost:5005/health  # Prescription service
-   curl http://localhost:5006/health  # Clinical records (if configured)
+   
+   # For services without /health endpoints, check if they respond:
+   curl http://localhost:5001/drug     # Drug catalogue (list drugs)
+   curl http://localhost:5005/         # Prescription service (root)
    ```
 
 3. **Review Timeout Configuration**
