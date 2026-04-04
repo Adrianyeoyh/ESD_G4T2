@@ -17,6 +17,7 @@ import {
   SquarePen,
   Trash2,
   UserPlus,
+  Users,
   Wallet,
   X,
 } from 'lucide-vue-next'
@@ -37,6 +38,8 @@ const ENDPOINTS = {
     'https://personal-wv4mxqur.outsystemscloud.com/RecordVisitNotes/rest/ConsultationAPI',
   patientRegistration:
     'https://personal-wv4mxqur.outsystemscloud.com/PatientService/rest/PatientAPI/patient',
+  patientsList:
+    'https://personal-wv4mxqur.outsystemscloud.com/PatientService/rest/PatientAPI/patients',
 }
 
 const STRIPE_PUBLISHABLE_KEY =
@@ -59,6 +62,13 @@ const recordsError = ref('')
 // Inventory search & filter
 const inventorySearch = ref('')
 const inventoryNotice = ref('')
+
+// Patients state
+const patientsData = ref([])
+const patientsSearch = ref('')
+const loadingPatients = ref(false)
+const patientsError = ref('')
+const selectedPatientDetails = ref(null)
 
 // Inventory sorting state
 const inventorySortKey = ref('name') // 'name' | 'stock' | 'price'
@@ -137,6 +147,19 @@ const normalizeDrug = (drug) => {
   }
 }
 
+// Filtered patients (search)
+const filteredPatients = computed(() => {
+  const query = String(patientsSearch.value || '').trim().toLowerCase()
+  if (!query) {
+    return patientsData.value
+  }
+  return patientsData.value.filter((patient) =>
+    String(patient.name || '').toLowerCase().includes(query) ||
+    String(patient.patientId || '').toLowerCase().includes(query) ||
+    String(patient.email || '').toLowerCase().includes(query),
+  )
+})
+
 // Filtered inventory (search)
 const filteredInventory = computed(() => {
   const query = String(inventorySearch.value || '').trim().toLowerCase()
@@ -197,7 +220,7 @@ const submittingPatient = ref(false)
 const patientFormError = ref('')
 const patientFormSuccess = ref('')
 const patientForm = ref({
-  nric: '',
+  patientId: '',
   name: '',
   phoneNo: '',
   email: '',
@@ -365,6 +388,7 @@ const navItems = [
   { key: 'inventory', label: 'Inventory', icon: Pill },
   { key: 'records', label: 'Records', icon: FileText },
   { key: 'history', label: 'Patient History', icon: FileText },
+  { key: 'patients', label: 'All Patients', icon: Users },
   { key: 'payments', label: 'Payments', icon: CreditCard },
 ]
 
@@ -550,6 +574,20 @@ const beginOutsystemsSync = () => {
 
 const endOutsystemsSync = () => {
   outsystemsSyncCounter.value = Math.max(0, outsystemsSyncCounter.value - 1)
+}
+
+const fetchPatients = async () => {
+  loadingPatients.value = true
+  patientsError.value = ''
+
+  try {
+    const response = await axios.get(ENDPOINTS.patientsList)
+    patientsData.value = Array.isArray(response.data) ? response.data : response.data?.data || []
+  } catch (error) {
+    patientsError.value = error?.message || 'Unable to fetch patients list.'
+  } finally {
+    loadingPatients.value = false
+  }
 }
 
 const fetchDrugs = async () => {
@@ -998,10 +1036,17 @@ const submitPatient = async () => {
   beginOutsystemsSync()
 
   const payload = {
-    nric: String(patientForm.value.nric ?? '').trim(),
+    patientId: String(patientForm.value.patientId ?? '').trim(),
     name: String(patientForm.value.name ?? '').trim(),
-    phoneNo: Number(patientForm.value.phoneNo),
+    phoneNo: Number(patientForm.value.phoneNo ?? 0),
     email: String(patientForm.value.email ?? '').trim(),
+  }
+
+  if (!payload.patientId || payload.patientId.length !== 9) {
+    patientFormError.value = 'Patient ID (NRIC) must be exactly 9 characters.'
+    submittingPatient.value = false
+    endOutsystemsSync()
+    return
   }
 
   try {
@@ -1018,13 +1063,7 @@ const submitPatient = async () => {
       throw new Error(errorText || `Patient registration failed (${response.status})`)
     }
 
-    // OutSystems POST /patient returns a raw integer id in text form.
-    const createdPatientId = Number.parseInt((await response.text()).trim(), 10)
-    if (Number.isNaN(createdPatientId)) {
-      throw new Error('OutSystems Patient API did not return a numeric patient ID.')
-    }
-
-    patientFormSuccess.value = `Patient registered successfully via OutSystems (ID: ${createdPatientId}).`
+    patientFormSuccess.value = `Patient registered successfully with ID: ${payload.patientId}`
   } catch (error) {
     if (String(error?.message || '').includes('500')) {
       patientFormError.value =
@@ -1184,7 +1223,7 @@ const resetPaymentFlow = () => {
 }
 
 const refreshAll = async () => {
-  await Promise.all([fetchDrugs(), fetchRecords()])
+  await Promise.all([fetchDrugs(), fetchRecords(), fetchPatients()])
   await loadBillingRows()
 }
 
@@ -1671,6 +1710,70 @@ onMounted(async () => {
           </div>
         </section>
 
+        <section v-if="activeView === 'patients'" class="space-y-5">
+          <div class="rounded-2xl border border-[#E8EAED] bg-white p-6">
+            <div class="mb-4 flex items-center gap-2">
+              <Users class="h-5 w-5 text-[#1a73e8]" />
+              <h3 class="text-lg font-semibold">All Patients</h3>
+            </div>
+            <p class="text-sm text-[#5f6368]">Search and view all registered patients with detailed information.</p>
+
+            <div class="mt-4 flex flex-col gap-3 md:flex-row md:items-center">
+              <input
+                v-model="patientsSearch"
+                class="w-full rounded-lg border border-[#DADCE0] px-3 py-2 text-sm placeholder:text-[#9CA3AF] md:max-w-sm"
+                placeholder="Search by name, patient ID, or email..."
+              />
+              <button
+                class="inline-flex items-center justify-center gap-2 rounded-lg bg-[#1a73e8] px-4 py-2 text-sm font-medium text-white hover:bg-[#1765cc] disabled:opacity-60"
+                :disabled="loadingPatients"
+                @click="fetchPatients"
+              >
+                <LoaderCircle v-if="loadingPatients" class="h-4 w-4 animate-spin" />
+                Refresh
+              </button>
+            </div>
+
+            <p v-if="patientsError" class="mt-4 rounded-lg bg-[#FDECEC] p-3 text-sm text-[#B3261E]">
+              {{ patientsError }}
+            </p>
+
+            <div v-if="loadingPatients" class="mt-4 text-sm text-[#5f6368]">Loading patients...</div>
+            <div v-else-if="filteredPatients.length === 0 && !patientsError" class="mt-4 text-sm text-[#5f6368]">
+              No patients found.
+            </div>
+            <div v-else-if="filteredPatients.length > 0" class="mt-4 overflow-hidden rounded-xl border border-[#E8EAED]">
+              <table class="min-w-full divide-y divide-[#E8EAED] text-sm">
+                <thead class="bg-[#F8F9FA]">
+                  <tr class="text-left text-[#5f6368]">
+                    <th class="px-4 py-3 font-medium">Patient ID</th>
+                    <th class="px-4 py-3 font-medium">Name</th>
+                    <th class="px-4 py-3 font-medium">Email</th>
+                    <th class="px-4 py-3 font-medium">Phone</th>
+                    <th class="px-4 py-3 font-medium">Action</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-[#F1F3F4] bg-white">
+                  <tr v-for="patient in filteredPatients" :key="patient.patientId">
+                    <td class="px-4 py-3 font-medium">{{ patient.patientId }}</td>
+                    <td class="px-4 py-3">{{ patient.name }}</td>
+                    <td class="px-4 py-3">{{ patient.email || 'N/A' }}</td>
+                    <td class="px-4 py-3">{{ patient.phoneNo || 'N/A' }}</td>
+                    <td class="px-4 py-3">
+                      <button
+                        class="rounded-lg bg-[#1a73e8] px-3 py-1 text-xs font-medium text-white hover:bg-[#1765cc]"
+                        @click="selectedPatientDetails = patient"
+                      >
+                        Details
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
         <section v-if="activeView === 'payments'" class="space-y-6">
           <div class="rounded-2xl border border-[#E8EAED] bg-white p-6">
             <h3 class="text-lg font-semibold">Billing (Closed Records)</h3>
@@ -1821,7 +1924,7 @@ onMounted(async () => {
         </div>
 
         <div class="grid gap-4">
-          <input v-model="patientForm.nric" class="rounded-lg border border-[#DADCE0] px-3 py-2 text-sm" placeholder="NRIC" />
+          <input v-model="patientForm.patientId" class="rounded-lg border border-[#DADCE0] px-3 py-2 text-sm" placeholder="Patient ID (NRIC - 9 characters)" />
           <input v-model="patientForm.name" class="rounded-lg border border-[#DADCE0] px-3 py-2 text-sm" placeholder="Full Name" />
           <input v-model="patientForm.phoneNo" class="rounded-lg border border-[#DADCE0] px-3 py-2 text-sm" placeholder="Phone Number" />
           <input v-model="patientForm.email" class="rounded-lg border border-[#DADCE0] px-3 py-2 text-sm" placeholder="Email" />
@@ -1839,6 +1942,46 @@ onMounted(async () => {
           >
             <LoaderCircle v-if="submittingPatient" class="h-4 w-4 animate-spin" />
             Submit
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Patient Details Modal -->
+    <div v-if="selectedPatientDetails" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4">
+      <div class="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+        <div class="mb-5 flex items-center justify-between">
+          <h3 class="text-xl font-semibold">Patient Details</h3>
+          <button class="rounded-lg p-2 hover:bg-[#F1F3F4]" @click="selectedPatientDetails = null">
+            <X class="h-4 w-4" />
+          </button>
+        </div>
+
+        <div class="space-y-4">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.14em] text-[#5f6368]">Patient ID (NRIC)</p>
+            <p class="mt-1 text-lg font-semibold">{{ selectedPatientDetails.patientId }}</p>
+          </div>
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.14em] text-[#5f6368]">Full Name</p>
+            <p class="mt-1 text-lg font-semibold">{{ selectedPatientDetails.name }}</p>
+          </div>
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.14em] text-[#5f6368]">Email</p>
+            <p class="mt-1 text-base">{{ selectedPatientDetails.email || 'N/A' }}</p>
+          </div>
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.14em] text-[#5f6368]">Phone Number</p>
+            <p class="mt-1 text-base">{{ selectedPatientDetails.phoneNo || 'N/A' }}</p>
+          </div>
+        </div>
+
+        <div class="mt-6 flex justify-end">
+          <button
+            class="rounded-lg border border-[#DADCE0] px-4 py-2 text-sm font-medium text-[#5f6368] hover:bg-[#F1F3F4]"
+            @click="selectedPatientDetails = null"
+          >
+            Close
           </button>
         </div>
       </div>
