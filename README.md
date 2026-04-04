@@ -15,6 +15,8 @@ A microservices-based backend system for managing clinical prescriptions, drug i
 - [Setup & Running](#setup--running)
 - [Kong API Gateway](#kong-api-gateway)
 - [Scaling Services](#scaling-services)
+- [Monitoring (Prometheus & Grafana)](#monitoring-prometheus--grafana)
+- [Kubernetes Deployment](#kubernetes-deployment)
 - [Database Reference](#database-reference)
 - [Environment Variables](#environment-variables)
 - [Troubleshooting](#troubleshooting)
@@ -344,6 +346,8 @@ This starts:
 - **RabbitMQ** — message broker
 - **4 atomic services** — Drug Catalogue, Prescription, Invoice, Payment
 - **2 composite services** — Prescribe Medicine, Make Payment
+- **Prometheus** — metrics collection and alerting
+- **Grafana** — monitoring dashboards (auto-provisioned)
 
 ### 4. Configure Kong Routes
 
@@ -353,7 +357,7 @@ After all containers are healthy, run the setup script:
 ./kong-setup.sh
 ```
 
-This registers upstreams, services, and routes in Kong via the Admin API.
+This registers upstreams, services, routes, and enables the Prometheus monitoring plugin.
 
 ### 5. Verify
 
@@ -366,6 +370,12 @@ curl http://localhost:8000/drug
 
 # Access Kong Manager GUI
 open http://localhost:8002
+
+# Access Grafana dashboard
+open http://localhost:3000
+
+# Check Prometheus alerts
+open http://localhost:9090/alerts
 ```
 
 ---
@@ -416,6 +426,191 @@ docker compose up -d --scale drug_service=3 --scale invoice_service=2
 ```
 
 > **Note:** `container_name` has been removed from scalable services to allow multiple instances. Only infrastructure services (Postgres, RabbitMQ) retain fixed names.
+
+---
+
+## Monitoring (Prometheus & Grafana)
+
+Prometheus and Grafana are included in the Docker Compose stack and start automatically alongside all other services.
+
+| Service | URL | Purpose |
+|---------|-----|---------|
+| **Prometheus** | `http://localhost:9090` | Metrics collection & alerting |
+| **Grafana** | `http://localhost:3000` | Dashboards (no login required) |
+
+### How It Works
+
+```
+Kong ──metrics──> Prometheus ──queries──> Grafana
+(:8100/metrics)    (scrapes every 15s)     (dashboards + alerts)
+```
+
+1. Kong exposes metrics at port `8100` via the **Prometheus plugin** (enabled by `kong-setup.sh`)
+2. Prometheus scrapes Kong every 15 seconds
+3. Grafana reads from Prometheus and renders dashboards
+
+> **Startup order:** Prometheus and Grafana start with `docker compose up` and begin collecting basic Kong metrics immediately. After running `./kong-setup.sh`, the Prometheus plugin is enabled and per-service metrics (request rates, latency, bandwidth) become available.
+
+### Pre-configured Dashboard
+
+Grafana ships with a **ClinicFlow - Kong Gateway Overview** dashboard that auto-loads on startup:
+
+**Status Row:**
+- Gateway status (UP/DOWN)
+- Datastore reachable
+- Total requests per second
+- 5xx error rate
+- Active connections
+
+**Traffic:**
+- Requests per second by service (line chart)
+- Requests by HTTP status code (stacked bars: green=2xx, yellow=4xx, red=5xx)
+
+**Latency:**
+- Request latency by service (p50 / p95 / p99)
+- Upstream (backend) latency by service (p50 / p95 / p99)
+
+**Network & Health:**
+- Bandwidth in/out per service
+- Nginx connection states (active, reading, writing, waiting)
+- Upstream health status table
+- Drilldown table: requests by service and status code
+
+### Prometheus Alerts
+
+Pre-configured alert rules fire automatically when conditions are met. View status at `http://localhost:9090/alerts`.
+
+| Alert | Condition | Severity |
+|-------|-----------|----------|
+| **HighErrorRate** | >5% of requests returning 5xx for 2 minutes | Critical |
+| **ServiceDown** | Kong unreachable for 1 minute | Critical |
+| **HighLatency** | p99 request latency >2s for 3 minutes | Warning |
+| **HighUpstreamLatency** | p99 backend latency >1.5s for 3 minutes | Warning |
+| **UpstreamUnhealthy** | Kong health check detects unhealthy upstream target | Critical |
+
+### Useful Prometheus Queries
+
+Run these in Prometheus (`http://localhost:9090/graph`) or as Grafana Explore queries:
+
+```promql
+# Total request rate across all services
+sum(rate(kong_http_requests_total[5m]))
+
+# Request rate per service
+sum(rate(kong_http_requests_total[5m])) by (service)
+
+# Error rate (5xx only)
+sum(rate(kong_http_requests_total{code=~"5.."}[5m])) / sum(rate(kong_http_requests_total[5m]))
+
+# p99 latency per service
+histogram_quantile(0.99, sum(rate(kong_request_latency_ms_bucket[5m])) by (le, service))
+
+# Bandwidth per service
+sum(rate(kong_bandwidth_bytes[5m])) by (service, direction)
+```
+
+---
+
+## Kubernetes Deployment
+
+The `k8s/` directory contains manifests to deploy the full stack on Kubernetes with auto-scaling.
+
+### Prerequisites
+
+- **Docker Desktop** with Kubernetes enabled (Settings > Kubernetes > Enable)
+- Docker images built locally (`docker compose build`)
+
+### Quick Start
+
+```bash
+cd backend
+
+# Deploy everything (builds images, creates namespace, deploys in order)
+./k8s-setup.sh
+
+# Tear down everything
+./k8s-setup.sh teardown
+```
+
+The setup script handles the full deployment sequence:
+1. Builds Docker images
+2. Creates `clinicflow` namespace
+3. Deploys secrets and infrastructure (Postgres, RabbitMQ)
+4. Waits for databases to be healthy
+5. Deploys atomic services (drug, invoice, prescription, payment)
+6. Deploys composite services (prescribe medicine, make payment)
+7. Deploys Kong API Gateway (DB-less mode with declarative config)
+8. Deploys Prometheus and Grafana
+
+### Architecture on K8s
+
+| Component | K8s Resource | Replicas | Auto-scaling |
+|-----------|-------------|----------|--------------|
+| Drug Service | Deployment + HPA | 2 | 2-5 pods at 70% CPU |
+| Invoice Service | Deployment + HPA | 2 | 2-5 pods at 70% CPU |
+| Payment Service | Deployment + HPA | 2 | 2-5 pods at 70% CPU |
+| Prescription Service | Deployment + HPA | 2 | 2-5 pods at 70% CPU |
+| Prescribe Medicine | Deployment + HPA | 2 | 2-5 pods at 70% CPU |
+| Make Payment | Deployment + HPA | 2 | 2-5 pods at 70% CPU |
+| Kong | Deployment | 1 | LoadBalancer on :8000 |
+| PostgreSQL | StatefulSet + PVC | 1 | 5Gi persistent volume |
+| RabbitMQ | Deployment | 1 | - |
+| Prometheus | Deployment | 1 | Scrapes Kong metrics |
+| Grafana | Deployment + PVC | 1 | 2Gi persistent volume |
+
+### K8s Manifest Files
+
+```
+k8s/
+├── namespace.yml              # clinicflow namespace
+├── secrets.yml                # DB + Stripe credentials
+├── postgres.yml               # StatefulSet + PVC + init.sql ConfigMap
+├── rabbitmq.yml               # Deployment + Service
+├── drug-service.yml           # Deployment + Service + HPA
+├── invoice-service.yml        # Deployment + Service + HPA
+├── prescription-service.yml   # Deployment + Service + HPA
+├── payment-service.yml        # Deployment + Service + HPA
+├── prescribe-medicine.yml     # Deployment + Service + HPA
+├── make-payment.yml           # Deployment + Service + HPA
+├── kong.yml                   # Deployment + LoadBalancer + declarative config
+├── prometheus.yml             # Deployment + Service + scrape config
+└── grafana.yml                # Deployment + Service + PVC + datasource provisioning
+```
+
+### Useful K8s Commands
+
+```bash
+# Check all pods
+kubectl get pods -n clinicflow
+
+# Check auto-scaler status
+kubectl get hpa -n clinicflow
+
+# View logs for a service
+kubectl logs -n clinicflow -l app=drug-service
+
+# Scale manually
+kubectl scale deployment drug-service -n clinicflow --replicas=5
+
+# Describe a pod (debug startup issues)
+kubectl describe pod -n clinicflow -l app=invoice-service
+
+# Port-forward a service for local access
+kubectl port-forward -n clinicflow svc/grafana 3000:3000
+
+# Test Kong route
+curl http://localhost:8000/drug
+```
+
+### Docker Compose vs Kubernetes
+
+| | Docker Compose | Kubernetes |
+|---|---|---|
+| **Startup** | `docker compose up -d --build` + `./kong-setup.sh` | `./k8s-setup.sh` |
+| **Scaling** | Manual: `--scale drug_service=3` | Auto: HPA scales on CPU usage |
+| **Self-healing** | `restart: unless-stopped` | Auto-restarts + reschedules to healthy nodes |
+| **Kong mode** | Postgres-backed (Admin API + GUI) | DB-less (declarative YAML config) |
+| **Best for** | Development, demos | Production, auto-scaling |
 
 ---
 
@@ -528,12 +723,37 @@ curl http://localhost:8001/upstreams | python3 -m json.tool
 ```
 ESD_G4T2/
 ├── backend/
-│   ├── docker-compose.yml          # Full stack orchestration
-│   ├── kong-setup.sh               # Kong route registration script
+│   ├── docker-compose.yml          # Full stack orchestration (12 containers)
+│   ├── kong-setup.sh               # Kong route + Prometheus plugin setup
+│   ├── k8s-setup.sh                # One-command Kubernetes deployment
 │   ├── kong.yml                    # Kong declarative config (reference)
+│   ├── prometheus.yml              # Prometheus scrape config
+│   ├── prometheus-alerts.yml       # Alert rules (error rate, latency, health)
 │   ├── .env.postgres               # Database credentials
 │   ├── db/
 │   │   └── init.sql                # Schema + table initialization
+│   ├── grafana/
+│   │   ├── dashboards/
+│   │   │   └── kong-overview.json  # Pre-built Kong monitoring dashboard
+│   │   └── provisioning/
+│   │       ├── dashboards/
+│   │       │   └── dashboards.yml  # Dashboard auto-provisioning config
+│   │       └── datasources/
+│   │           └── datasource.yml  # Prometheus datasource config
+│   ├── k8s/                        # Kubernetes manifests
+│   │   ├── namespace.yml
+│   │   ├── secrets.yml
+│   │   ├── postgres.yml
+│   │   ├── rabbitmq.yml
+│   │   ├── drug-service.yml
+│   │   ├── invoice-service.yml
+│   │   ├── prescription-service.yml
+│   │   ├── payment-service.yml
+│   │   ├── prescribe-medicine.yml
+│   │   ├── make-payment.yml
+│   │   ├── kong.yml
+│   │   ├── prometheus.yml
+│   │   └── grafana.yml
 │   ├── requirements/               # Shared dependency files
 │   │   ├── base.txt                # FastAPI stack (shared)
 │   │   ├── invoice.txt
