@@ -107,24 +107,6 @@ services:
     networks:
       - esd-net
 
-  record_service:
-    build:
-      context: .
-      dockerfile: services/clinical_record_service/Dockerfile
-    container_name: clinical_record_service
-    env_file:
-      - ./services/clinical_record_service/.env
-    environment:
-      APP_ENV: docker
-    ports:
-      - "5006:5006"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: unless-stopped
-    networks:
-      - esd-net
-
   prescribe_medicine:
     build:
       context: .
@@ -139,7 +121,6 @@ services:
     depends_on:
       - drug_service
       - invoice_service
-      - record_service
     restart: unless-stopped
     networks:
       - esd-net
