@@ -69,6 +69,20 @@ setup_service "payment-service"    "payment_service"      5004 "/payments"
 setup_service "prescribe-medicine" "prescribe_medicine"   5007 "/prescribe"
 setup_service "make-payment"       "make_payment"         5008 "/make_payment"
 
+# -------------------------------------------------------
+# Enable Prometheus plugin globally
+# -------------------------------------------------------
+echo ""
+echo "=== Enabling Prometheus plugin ==="
+curl -s -X POST "$KONG_ADMIN/plugins" \
+  --data "name=prometheus" \
+  --data "config.status_code_metrics=true" \
+  --data "config.latency_metrics=true" \
+  --data "config.bandwidth_metrics=true" \
+  --data "config.upstream_health_metrics=true" \
+  > /dev/null
+echo "  Prometheus plugin enabled globally"
+
 echo ""
 echo "Done. Kong routes configured."
 echo "  Proxy:   http://localhost:8000"
