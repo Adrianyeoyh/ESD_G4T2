@@ -96,11 +96,8 @@ class PrescribeMedicineService:
                         f"Available: {current_quantity}, Requested: {quantity}"
                     )
 
-                # Calculate new quantity after deduction
-                new_quantity = current_quantity - quantity
-
-                # Update drug quantity via HTTP PUT
-                drug_catalogue_client.update_drug_quantity(drug_id, new_quantity)
+                # Deduct drug quantity via atomic PATCH endpoint
+                drug_catalogue_client.deduct_stock(drug_id, quantity)
 
                 # Track for potential rollback
                 rollback_stock.append({
