@@ -3,7 +3,8 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
 
-class DrugCreate(BaseModel):
+
+class DrugBase(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
     drug_name: str = Field(min_length=1)
@@ -35,7 +36,18 @@ class DrugCreate(BaseModel):
             raise ValueError('Price cannot exceed 999999.99')
         return v
 
+
+class DrugCreate(DrugBase):
+    pass
+
+
+class DrugUpdate(DrugBase):
+    pass
+
+
 class DrugUpdateQuantity(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
     quantity: int
 
     @field_validator('quantity')
@@ -44,6 +56,33 @@ class DrugUpdateQuantity(BaseModel):
         if v < 0:
             raise ValueError('Quantity cannot be negative')
         return v
+
+
+class DrugDeductQuantity(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    amount: int
+
+    @field_validator('amount')
+    @classmethod
+    def validate_amount(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError('Deduction amount must be positive')
+        return v
+
+
+class DrugRestoreQuantity(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    amount: int
+
+    @field_validator('amount')
+    @classmethod
+    def validate_amount(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError('Restore amount must be positive')
+        return v
+
 
 class DrugResponse(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, from_attributes=True)

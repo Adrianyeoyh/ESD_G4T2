@@ -1,0 +1,134 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-initdb
+  namespace: clinicflow
+  labels:
+    app: postgres
+data:
+  init.sql: |
+    CREATE SCHEMA IF NOT EXISTS invoice_schema;
+    CREATE SCHEMA IF NOT EXISTS payment_schema;
+    CREATE SCHEMA IF NOT EXISTS records_schema;
+    CREATE SCHEMA IF NOT EXISTS patient_schema;
+    CREATE SCHEMA IF NOT EXISTS drug_schema;
+    CREATE SCHEMA IF NOT EXISTS prescription_schema;
+
+    CREATE TABLE IF NOT EXISTS drug_schema.drug (
+        "drugId"   SERIAL PRIMARY KEY,
+        "drugName" VARCHAR(255) NOT NULL,
+        quantity   INTEGER      NOT NULL DEFAULT 0,
+        price      NUMERIC(10, 2) NOT NULL,
+        CONSTRAINT uq_drug_name            UNIQUE ("drugName"),
+        CONSTRAINT ck_quantity_non_negative CHECK (quantity >= 0),
+        CONSTRAINT ck_price_positive        CHECK (price > 0)
+    );
+
+    CREATE INDEX IF NOT EXISTS ix_drug_name_ci ON drug_schema.drug (lower("drugName"));
+
+    CREATE TABLE IF NOT EXISTS prescription_schema.prescription (
+        "prescriptionId" SERIAL PRIMARY KEY,
+        "recordId"       INTEGER      NOT NULL,
+        "drugId"         INTEGER      NOT NULL,
+        "drugName"       VARCHAR(255) NOT NULL,
+        quantity         INTEGER      NOT NULL,
+        CONSTRAINT ck_prescription_quantity_positive CHECK (quantity > 0)
+    );
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: clinicflow
+  labels:
+    app: postgres
+spec:
+  clusterIP: None
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: clinicflow
+  labels:
+    app: postgres
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: esd_db
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: POSTGRES_PASSWORD
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+            - name: initdb
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - $(POSTGRES_USER)
+                - -d
+                - esd_db
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - $(POSTGRES_USER)
+                - -d
+                - esd_db
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+      volumes:
+        - name: initdb
+          configMap:
+            name: postgres-initdb
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 5Gi

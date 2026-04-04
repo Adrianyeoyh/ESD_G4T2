@@ -1,6 +1,6 @@
 from sqlalchemy import CheckConstraint, Column, Index, Integer, Numeric, String, UniqueConstraint, func
 
-from app.config.drug_db import Base
+from app.config.drug_catalogue_db import Base
 from app.config.settings import DB_SCHEMA
 
 class Drug(Base):

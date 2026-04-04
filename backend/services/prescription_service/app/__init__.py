@@ -1,16 +1,16 @@
-
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from app.routers.drug_catalogue_router import router as drug_catalogue_router
-from app.config.drug_catalogue_db import Base, engine
-from app.models import drug_catalogue_model  # noqa: F401 — registers model on Base
+from app.routers.prescription_router import router as prescription_router
+from app.config.prescription_db import Base, engine
+from app.models import prescription_model  # noqa: F401 - registers model on Base
 from utils.exceptions import AppError
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="Drug Catalogue Service",
+        title="Prescription Service",
         version="1.0.0",
-        description="Atomic microservice for managing drug inventory",
+        description="Atomic microservice for assigning patient prescriptions",
     )
 
     @app.exception_handler(AppError)
@@ -18,6 +18,28 @@ def create_app() -> FastAPI:
         return JSONResponse(
             status_code=exc.status_code,
             content={"success": False, "data": None, "error": exc.message},
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def request_validation_error_handler(request: Request, exc: RequestValidationError):
+        details = []
+        for err in exc.errors():
+            details.append(
+                {
+                    "loc": err.get("loc"),
+                    "msg": err.get("msg"),
+                    "type": err.get("type"),
+                }
+            )
+
+        return JSONResponse(
+            status_code=422,
+            content={
+                "success": False,
+                "data": None,
+                "error": "Validation failed",
+                "details": details,
+            },
         )
 
     @app.exception_handler(Exception)
@@ -28,7 +50,7 @@ def create_app() -> FastAPI:
         )
 
     # ── Router registration ─────────────────────────────────────────────────
-    app.include_router(drug_catalogue_router)
+    app.include_router(prescription_router)
 
     # ── DB schema management ────────────────────────────────────────────────
     # Safe for dev: create_all is idempotent (skips existing tables).
