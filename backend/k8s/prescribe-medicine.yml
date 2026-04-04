@@ -1,0 +1,88 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prescribe-medicine
+  namespace: clinicflow
+  labels:
+    app: prescribe-medicine
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: prescribe-medicine
+  template:
+    metadata:
+      labels:
+        app: prescribe-medicine
+    spec:
+      containers:
+        - name: prescribe-medicine
+          image: backend-prescribe_medicine
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 5007
+          env:
+            - name: APP_ENV
+              value: docker
+            - name: DRUG_CATALOGUE_URL
+              value: http://drug-service:5001
+            - name: INVOICE_SERVICE_URL
+              value: http://invoice-service:5003
+            - name: PRESCRIPTION_SERVICE_URL
+              value: http://prescription-service:5005
+            - name: HTTP_TIMEOUT_SECONDS
+              value: "8"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          readinessProbe:
+            tcpSocket:
+              port: 5007
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: 5007
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prescribe-medicine
+  namespace: clinicflow
+  labels:
+    app: prescribe-medicine
+spec:
+  type: ClusterIP
+  selector:
+    app: prescribe-medicine
+  ports:
+    - port: 5007
+      targetPort: 5007
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: prescribe-medicine-hpa
+  namespace: clinicflow
+  labels:
+    app: prescribe-medicine
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: prescribe-medicine
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

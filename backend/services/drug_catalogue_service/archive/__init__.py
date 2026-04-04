@@ -8,10 +8,10 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-# from app.config.drug_db import Base, engine
+# from app.config.drug_catalogue_db import Base, engine
 # from app.config.settings import DB_SCHEMA
-# from app.models.drug_model import Drug
-from app.routers.drug_router import router as drug_router
+# from app.models.drug_catalogue_model import Drug
+from app.routers.drug_catalogue_router import router as drug_catalogue_router
 from utils.exceptions import AppError
 
 
@@ -236,7 +236,7 @@ def create_app() -> FastAPI:
         )
 
     # ── Router registration ─────────────────────────────────────────────────
-    app.include_router(drug_router)
+    app.include_router(drug_catalogue_router)
 
     # ── DB schema management ────────────────────────────────────────────────
     # Do NOT use create_all in production — use Alembic or init.sql instead.
