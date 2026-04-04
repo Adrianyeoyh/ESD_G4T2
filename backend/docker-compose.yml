@@ -1,6 +1,7 @@
 volumes:
   esd_pgdata:
   kong_pgdata:
+  grafana_data:
 
 networks:
   esd-net:
@@ -88,6 +89,7 @@ services:
       KONG_ADMIN_LISTEN: 0.0.0.0:8001
       KONG_ADMIN_GUI_URL: http://localhost:8002
       KONG_ADMIN_GUI_LISTEN: 0.0.0.0:8002
+      KONG_STATUS_LISTEN: "0.0.0.0:8100"
     depends_on:
       kong-migration:
         condition: service_completed_successfully
@@ -216,5 +218,41 @@ services:
       rabbitmq:
         condition: service_healthy
     restart: unless-stopped
+    networks:
+      - esd-net
+
+  #######################################
+  # Prometheus
+  #######################################
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: esd-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus-alerts.yml:/etc/prometheus/alerts.yml:ro
+    depends_on:
+      - kong
+    networks:
+      - esd-net
+
+  #######################################
+  # Grafana
+  #######################################
+  grafana:
+    image: grafana/grafana:latest
+    container_name: esd-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
     networks:
       - esd-net
