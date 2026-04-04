@@ -1,21 +1,17 @@
-services:
-  rabbitmq:
-    image: rabbitmq:4-management
-    container_name: esd-rabbitmq
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-    environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    networks:
-      - esd-net
+volumes:
+  esd_pgdata:
+  kong_pgdata:
 
+networks:
+  esd-net:
+    driver: bridge
+    name: esd-net
+
+services:
+
+  #######################################
+  # Postgres: App database
+  #######################################
   postgres:
     image: postgres:16
     container_name: esd-postgres
@@ -36,34 +32,118 @@ services:
     networks:
       - esd-net
 
+  #######################################
+  # Postgres: Kong database
+  #######################################
+  kong-database:
+    image: postgres:17.4
+    restart: always
+    environment:
+      POSTGRES_DB: kong
+      POSTGRES_USER: kong
+      POSTGRES_PASSWORD: password
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "kong"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - kong_pgdata:/var/lib/postgresql/data
+    networks:
+      - esd-net
+
+  #######################################
+  # Kong database migration
+  #######################################
+  kong-migration:
+    image: kong/kong-gateway:3.9
+    command: "kong migrations bootstrap"
+    restart: on-failure
+    environment:
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: kong-database
+      KONG_PG_USER: kong
+      KONG_PG_PASSWORD: password
+    depends_on:
+      kong-database:
+        condition: service_healthy
+    networks:
+      - esd-net
+
+  #######################################
+  # Kong: The API Gateway
+  #######################################
+  kong:
+    image: kong/kong-gateway:3.9
+    restart: always
+    environment:
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: kong-database
+      KONG_PG_USER: kong
+      KONG_PG_PASSWORD: password
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: 0.0.0.0:8001
+      KONG_ADMIN_GUI_URL: http://localhost:8002
+      KONG_ADMIN_GUI_LISTEN: 0.0.0.0:8002
+    depends_on:
+      kong-migration:
+        condition: service_completed_successfully
+    ports:
+      - "8000:8000"
+      - "8001:8001"
+      - "8002:8002"
+    networks:
+      - esd-net
+
+  #######################################
+  # RabbitMQ
+  #######################################
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: esd-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - esd-net
+
+  #######################################
+  # Atomic services
+  #######################################
   invoice_service:
     build:
       context: .
       dockerfile: services/invoice_service/Dockerfile
-    container_name: invoice_service
     env_file:
       - ./services/invoice_service/.env
     environment:
       APP_ENV: docker
-    ports:
-      - "5003:5003"
     depends_on:
       postgres:
         condition: service_healthy
     restart: unless-stopped
     networks:
       - esd-net
+
   drug_service:
     build:
       context: .
       dockerfile: services/drug_catalogue_service/Dockerfile
-    container_name: drug_service
     env_file:
       - ./services/drug_catalogue_service/.env
     environment:
       APP_ENV: docker
-    ports:
-      - "5001:5001"
     depends_on:
       postgres:
         condition: service_healthy
@@ -75,13 +155,10 @@ services:
     build:
       context: .
       dockerfile: services/prescription_service/Dockerfile
-    container_name: prescription_service
     env_file:
       - ./services/prescription_service/.env
     environment:
       APP_ENV: docker
-    ports:
-      - "5005:5005"
     depends_on:
       postgres:
         condition: service_healthy
@@ -93,13 +170,10 @@ services:
     build:
       context: .
       dockerfile: services/payment_service/Dockerfile
-    container_name: payment_service
     env_file:
       - ./services/payment_service/.env
     environment:
       APP_ENV: docker
-    ports:
-      - "5004:5004"
     depends_on:
       postgres:
         condition: service_healthy
@@ -107,27 +181,40 @@ services:
     networks:
       - esd-net
 
+  #######################################
+  # Composite services
+  #######################################
   prescribe_medicine:
     build:
       context: .
       dockerfile: composites/prescribe_medicine/Dockerfile
-    container_name: prescribe_medicine
     env_file:
       - ./composites/prescribe_medicine/.env
     environment:
       APP_ENV: docker
-    ports:
-      - "5007:5007"
     depends_on:
       - drug_service
       - invoice_service
+      - prescription_service
     restart: unless-stopped
     networks:
       - esd-net
 
-volumes:
-  esd_pgdata:
-
-networks:
-  esd-net:
-    driver: bridge
+  make_payment:
+    build:
+      context: .
+      dockerfile: composites/make_payment/Dockerfile
+    env_file:
+      - ./composites/make_payment/.env
+    environment:
+      APP_ENV: docker
+    depends_on:
+      invoice_service:
+        condition: service_started
+      payment_service:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - esd-net
