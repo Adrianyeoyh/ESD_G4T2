@@ -110,10 +110,10 @@ const confirmSubmission = async () => {
   const patientId = String(consultationDraft.value?.patientId || '').trim()
   const selectedDrugItems = selectedDrugs.value
     .map((drug) => ({
-      drugName: String(drug.name || '').trim(),
+      drugId: Number(drug.drugId ?? drug.id ?? 0),
       quantity: Number(drug.quantity || 0),
     }))
-    .filter((item) => item.drugName && item.quantity > 0)
+    .filter((item) => Number.isFinite(item.drugId) && item.drugId > 0 && item.quantity > 0)
 
   if (!patientId || !visitNotes) {
     reviewError.value = 'The consultation draft is incomplete.'
