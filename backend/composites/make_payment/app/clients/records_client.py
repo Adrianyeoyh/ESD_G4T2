@@ -98,13 +98,6 @@ def _parse_int_text_response(response: requests.Response, error_message: str) ->
         ) from exc
 
 
-def _normalize_record_dates(payload: dict) -> None:
-    for key in ("VisitDate", "visitDate"):
-        if key not in payload or not payload[key]:
-            continue
-        payload[key] = _to_yyyy_mm_dd(payload[key])
-
-
 def _build_close_record_payload(record: dict, record_id: int) -> dict:
     resolved_id = int(record.get("Id") or record.get("id") or record_id)
     resolved_patient_id = record.get("patientId") or record.get("PatientId")

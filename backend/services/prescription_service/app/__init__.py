@@ -1,5 +1,4 @@
 from fastapi import FastAPI, Request
-# from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from app.routers.prescription_router import router as prescription_router
@@ -13,13 +12,6 @@ def create_app() -> FastAPI:
         version="1.0.0",
         description="Atomic microservice for assigning patient prescriptions",
     )
-
-    # app.add_middleware(
-    #     CORSMiddleware,
-    #     allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
-    #     allow_methods=["*"],
-    #     allow_headers=["*"],
-    # )
 
     @app.exception_handler(AppError)
     async def app_error_handler(request: Request, exc: AppError):
