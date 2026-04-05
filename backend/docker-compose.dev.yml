@@ -1,0 +1,28 @@
+# Development overrides: exposes all service ports to host for direct access + Swagger docs.
+# Usage: ./run-dev.sh
+# Production (Kong only): docker compose up -d
+
+services:
+  invoice_service:
+    ports:
+      - "5003:5003"
+
+  drug_catalogue_service:
+    ports:
+      - "5001:5001"
+
+  prescription_service:
+    ports:
+      - "5005:5005"
+
+  payment_service:
+    ports:
+      - "5004:5004"
+
+  prescribe_medicine:
+    ports:
+      - "5007:5007"
+
+  make_payment:
+    ports:
+      - "5008:5008"
