@@ -67,3 +67,7 @@ Thumbs.db
 application-local.properties
 application-prod.properties
 .claude/settings.local.json
+
+# postman
+.postman/*
+postman

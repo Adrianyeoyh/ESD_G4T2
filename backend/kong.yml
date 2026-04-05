@@ -1,12 +1,29 @@
 _format_version: "3.0"
 
+plugins:
+  - name: prometheus
+    config:
+      per_consumer: false
+      status_code_metrics: true
+      latency_metrics: true
+      bandwidth_metrics: true
+      upstream_health_metrics: true
+
 services:
   - name: drug-catalogue
-    url: http://drug_service:5001
+    url: http://drug_catalogue_service:5001
     routes:
       - name: drug-catalogue-route
         paths:
           - /drug
+        strip_path: false
+
+  - name: invoice-service
+    url: http://invoice_service:5003
+    routes:
+      - name: invoice-route
+        paths:
+          - /invoice
         strip_path: false
 
   - name: payment-service

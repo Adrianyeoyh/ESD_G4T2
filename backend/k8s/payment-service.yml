@@ -52,6 +52,13 @@ spec:
                 secretKeyRef:
                   name: stripe-credentials
                   key: STRIPE_WEBHOOK_SECRET
+            - name: MAKE_PAYMENT_SERVICE_URL
+              value: http://make-payment:5008
+            - name: INTERNAL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: internal-api-key
+                  key: INTERNAL_API_KEY
           resources:
             requests:
               cpu: 100m

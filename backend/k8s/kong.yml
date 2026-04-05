@@ -20,11 +20,19 @@ data:
 
     services:
       - name: drug-catalogue
-        url: http://drug-service:5001
+        url: http://drug-catalogue-service:5001
         routes:
           - name: drug-catalogue-route
             paths:
               - /drug
+            strip_path: false
+
+      - name: invoice-service
+        url: http://invoice-service:5003
+        routes:
+          - name: invoice-route
+            paths:
+              - /invoice
             strip_path: false
 
       - name: payment-service

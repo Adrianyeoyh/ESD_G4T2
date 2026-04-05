@@ -1,23 +1,23 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: drug-service
+  name: drug-catalogue-service
   namespace: clinicflow
   labels:
-    app: drug-service
+    app: drug-catalogue-service
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: drug-service
+      app: drug-catalogue-service
   template:
     metadata:
       labels:
-        app: drug-service
+        app: drug-catalogue-service
     spec:
       containers:
-        - name: drug-service
-          image: backend-drug_service
+        - name: drug-catalogue-service
+          image: backend-drug_catalogue_service
           imagePullPolicy: Never
           ports:
             - containerPort: 5001
@@ -65,14 +65,14 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: drug-service
+  name: drug-catalogue-service
   namespace: clinicflow
   labels:
-    app: drug-service
+    app: drug-catalogue-service
 spec:
   type: ClusterIP
   selector:
-    app: drug-service
+    app: drug-catalogue-service
   ports:
     - port: 5001
       targetPort: 5001
@@ -80,15 +80,15 @@ spec:
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: drug-service-hpa
+  name: drug-catalogue-service-hpa
   namespace: clinicflow
   labels:
-    app: drug-service
+    app: drug-catalogue-service
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: drug-service
+    name: drug-catalogue-service
   minReplicas: 2
   maxReplicas: 5
   metrics:
