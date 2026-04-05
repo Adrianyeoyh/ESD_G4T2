@@ -57,6 +57,9 @@ __pycache__
 .project
 .classpath
 
+#AI
+.claude*
+
 # OS
 Thumbs.db
 

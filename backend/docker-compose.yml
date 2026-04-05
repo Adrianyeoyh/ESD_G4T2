@@ -1,21 +1,18 @@
-services:
-  rabbitmq:
-    image: rabbitmq:4-management
-    container_name: esd-rabbitmq
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-    environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    networks:
-      - esd-net
+volumes:
+  esd_pgdata:
+  kong_pgdata:
+  grafana_data:
 
+networks:
+  esd-net:
+    driver: bridge
+    name: esd-net
+
+services:
+
+  #######################################
+  # Postgres: App database
+  #######################################
   postgres:
     image: postgres:16
     container_name: esd-postgres
@@ -36,34 +33,119 @@ services:
     networks:
       - esd-net
 
+  #######################################
+  # Postgres: Kong database
+  #######################################
+  kong-database:
+    image: postgres:17.4
+    restart: always
+    environment:
+      POSTGRES_DB: kong
+      POSTGRES_USER: kong
+      POSTGRES_PASSWORD: password
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "kong"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - kong_pgdata:/var/lib/postgresql/data
+    networks:
+      - esd-net
+
+  #######################################
+  # Kong database migration
+  #######################################
+  kong-migration:
+    image: kong/kong-gateway:3.9
+    command: "kong migrations bootstrap"
+    restart: on-failure
+    environment:
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: kong-database
+      KONG_PG_USER: kong
+      KONG_PG_PASSWORD: password
+    depends_on:
+      kong-database:
+        condition: service_healthy
+    networks:
+      - esd-net
+
+  #######################################
+  # Kong: The API Gateway
+  #######################################
+  kong:
+    image: kong/kong-gateway:3.9
+    restart: always
+    environment:
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: kong-database
+      KONG_PG_USER: kong
+      KONG_PG_PASSWORD: password
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: 0.0.0.0:8001
+      KONG_ADMIN_GUI_URL: http://localhost:8002
+      KONG_ADMIN_GUI_LISTEN: 0.0.0.0:8002
+      KONG_STATUS_LISTEN: "0.0.0.0:8100"
+    depends_on:
+      kong-migration:
+        condition: service_completed_successfully
+    ports:
+      - "8000:8000"
+      - "8001:8001"
+      - "8002:8002"
+    networks:
+      - esd-net
+
+  #######################################
+  # RabbitMQ
+  #######################################
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: esd-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - esd-net
+
+  #######################################
+  # Atomic services
+  #######################################
   invoice_service:
     build:
       context: .
       dockerfile: services/invoice_service/Dockerfile
-    container_name: invoice_service
     env_file:
       - ./services/invoice_service/.env
     environment:
       APP_ENV: docker
-    ports:
-      - "5003:5003"
     depends_on:
       postgres:
         condition: service_healthy
     restart: unless-stopped
     networks:
       - esd-net
+
   drug_service:
     build:
       context: .
       dockerfile: services/drug_catalogue_service/Dockerfile
-    container_name: drug_service
     env_file:
       - ./services/drug_catalogue_service/.env
     environment:
       APP_ENV: docker
-    ports:
-      - "5081:5001"
     depends_on:
       postgres:
         condition: service_healthy
@@ -79,8 +161,6 @@ services:
       - ./services/prescription_service/.env
     environment:
       APP_ENV: docker
-    ports:
-      - "5005:5005"
     depends_on:
       postgres:
         condition: service_healthy
@@ -92,70 +172,14 @@ services:
     build:
       context: .
       dockerfile: services/payment_service/Dockerfile
-    container_name: payment_service
     env_file:
       - ./services/payment_service/.env
     environment:
       APP_ENV: docker
-      BILLING_SERVICE_URL: http://make_payment_service:5005
-      INVOICE_SERVICE_URL: http://invoice_service:5003
-      MAKE_PAYMENT_SERVICE_URL: http://make_payment_service:5005
-    ports:
-      - "5004:5004"
+      MAKE_PAYMENT_SERVICE_URL: http://make_payment_service:5008
     depends_on:
       postgres:
         condition: service_healthy
-    restart: unless-stopped
-    networks:
-      - esd-net
-
-  #######################################
-  # Composite services
-  #######################################
-  prescribe_medicine:
-    build:
-      context: .
-      dockerfile: composites/prescribe_medicine/Dockerfile
-    env_file:
-      - ./composites/prescribe_medicine/.env
-    environment:
-      APP_ENV: docker
-    ports:
-      - "5007:5007"
-    depends_on:
-      - drug_service
-      - invoice_service
-      - prescription_service
-    restart: unless-stopped
-    networks:
-      - esd-net
-
-  make_payment:
-    build:
-      context: .
-      dockerfile: composites/make_payment/Dockerfile
-    container_name: make_payment_service
-    environment:
-      APP_ENV: docker
-      INVOICE_SERVICE_URL: http://invoice_service:5003
-      PAYMENT_SERVICE_URL: http://payment_service:5004
-      RECORDS_SERVICE_URL: https://personal-iipxahjd.outsystemscloud.com/ClinicalRecordServices/rest/RecordsAPI
-      PATIENT_SERVICE_URL: https://personal-wv4mxqur.outsystemscloud.com/PatientService/rest/PatientAPI
-      INTERNAL_API_KEY: changeme-dev-key
-      RABBITMQ_HOST: rabbitmq
-      RABBITMQ_PORT: 5672
-      RABBITMQ_USER: guest
-      RABBITMQ_PASS: guest
-      RABBITMQ_QUEUE: notification.payment.success
-    ports:
-      - "5005:5005"
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-      invoice_service:
-        condition: service_started
-      payment_service:
-        condition: service_started
     restart: unless-stopped
     networks:
       - esd-net
@@ -177,9 +201,87 @@ services:
     networks:
       - esd-net
 
-volumes:
-  esd_pgdata:
+  #######################################
+  # Composite services
+  #######################################
+  prescribe_medicine:
+    build:
+      context: .
+      dockerfile: composites/prescribe_medicine/Dockerfile
+    env_file:
+      - ./composites/prescribe_medicine/.env
+    environment:
+      APP_ENV: docker
+    depends_on:
+      - drug_service
+      - invoice_service
+      - prescription_service
+    restart: unless-stopped
+    networks:
+      - esd-net
 
-networks:
-  esd-net:
-    driver: bridge
+  make_payment:
+    build:
+      context: .
+      dockerfile: composites/make_payment/Dockerfile
+    env_file:
+      - ./composites/make_payment/.env
+    environment:
+      APP_ENV: docker
+      INVOICE_SERVICE_URL: http://invoice_service:5003
+      PAYMENT_SERVICE_URL: http://payment_service:5004
+      RECORDS_SERVICE_URL: https://personal-iipxahjd.outsystemscloud.com/ClinicalRecordServices/rest/RecordsAPI
+      PATIENT_SERVICE_URL: https://personal-wv4mxqur.outsystemscloud.com/PatientService/rest/PatientAPI
+      INTERNAL_API_KEY: changeme-dev-key
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: guest
+      RABBITMQ_PASS: guest
+      RABBITMQ_QUEUE: notification.payment.success
+    depends_on:
+      invoice_service:
+        condition: service_started
+      payment_service:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - esd-net
+
+  #######################################
+  # Prometheus
+  #######################################
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: esd-prometheus
+    ports:
+      - "9090:9090"
+  volumes:
+    - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    - ./prometheus-alerts.yml:/etc/prometheus/alerts.yml:ro
+  depends_on:
+    - kong
+  networks:
+    - esd-net
+
+  #######################################
+  # Grafana
+  #######################################
+  grafana:
+    image: grafana/grafana:latest
+    container_name: esd-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    networks:
+      - esd-net
+

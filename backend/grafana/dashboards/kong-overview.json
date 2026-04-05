@@ -1,0 +1,203 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "title": "Gateway Status",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } }, "type": "value" }
+          ],
+          "thresholds": { "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        },
+        "overrides": []
+      },
+      "targets": [{ "expr": "up{job=\"kong\"}", "legendFormat": "Kong" }]
+    },
+    {
+      "title": "Datastore Reachable",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "0": { "text": "UNREACHABLE", "color": "red" }, "1": { "text": "REACHABLE", "color": "green" } }, "type": "value" }
+          ],
+          "thresholds": { "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        },
+        "overrides": []
+      },
+      "targets": [{ "expr": "kong_datastore_reachable", "legendFormat": "Datastore" }]
+    },
+    {
+      "title": "Total Requests (last 5m)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps", "thresholds": { "steps": [{ "color": "blue", "value": null }] } }, "overrides": [] },
+      "targets": [{ "expr": "sum(rate(kong_http_requests_total[5m]))", "legendFormat": "req/s" }]
+    },
+    {
+      "title": "Error Rate (5xx)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.01 }, { "color": "red", "value": 0.05 }] }
+        },
+        "overrides": []
+      },
+      "targets": [{ "expr": "sum(rate(kong_http_requests_total{code=~\"5..\"}[5m])) / sum(rate(kong_http_requests_total[5m])) or vector(0)", "legendFormat": "5xx rate" }]
+    },
+    {
+      "title": "Active Connections",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "thresholds": { "steps": [{ "color": "blue", "value": null }] } }, "overrides": [] },
+      "targets": [{ "expr": "kong_nginx_connections_total{state=\"active\"}", "legendFormat": "active" }]
+    },
+    {
+      "title": "DB Entities",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "thresholds": { "steps": [{ "color": "purple", "value": null }] } }, "overrides": [] },
+      "targets": [{ "expr": "kong_db_entities_total", "legendFormat": "entities" }]
+    },
+
+    {
+      "title": "Requests Per Second by Service",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 15, "pointSize": 5 } }, "overrides": [] },
+      "targets": [
+        { "expr": "sum(rate(kong_http_requests_total[1m])) by (service)", "legendFormat": "{{ service }}" }
+      ]
+    },
+    {
+      "title": "Requests by Status Code",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "drawStyle": "bars", "fillOpacity": 80, "stacking": { "mode": "normal" } }
+        },
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": "2.." }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
+          { "matcher": { "id": "byRegexp", "options": "4.." }, "properties": [{ "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }] },
+          { "matcher": { "id": "byRegexp", "options": "5.." }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] }
+        ]
+      },
+      "targets": [
+        { "expr": "sum(rate(kong_http_requests_total[1m])) by (code)", "legendFormat": "{{ code }}" }
+      ]
+    },
+
+    {
+      "title": "Request Latency by Service (p50 / p95 / p99)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(kong_request_latency_ms_bucket[5m])) by (le, service))", "legendFormat": "p50 {{ service }}" },
+        { "expr": "histogram_quantile(0.95, sum(rate(kong_request_latency_ms_bucket[5m])) by (le, service))", "legendFormat": "p95 {{ service }}" },
+        { "expr": "histogram_quantile(0.99, sum(rate(kong_request_latency_ms_bucket[5m])) by (le, service))", "legendFormat": "p99 {{ service }}" }
+      ]
+    },
+    {
+      "title": "Upstream Latency by Service (p50 / p95 / p99)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(kong_upstream_latency_ms_bucket[5m])) by (le, service))", "legendFormat": "p50 {{ service }}" },
+        { "expr": "histogram_quantile(0.95, sum(rate(kong_upstream_latency_ms_bucket[5m])) by (le, service))", "legendFormat": "p95 {{ service }}" },
+        { "expr": "histogram_quantile(0.99, sum(rate(kong_upstream_latency_ms_bucket[5m])) by (le, service))", "legendFormat": "p99 {{ service }}" }
+      ]
+    },
+
+    {
+      "title": "Bandwidth by Service",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "Bps", "custom": { "drawStyle": "line", "fillOpacity": 20 } }, "overrides": [] },
+      "targets": [
+        { "expr": "sum(rate(kong_bandwidth_bytes{direction=\"ingress\"}[5m])) by (service)", "legendFormat": "in: {{ service }}" },
+        { "expr": "sum(rate(kong_bandwidth_bytes{direction=\"egress\"}[5m])) by (service)", "legendFormat": "out: {{ service }}" }
+      ]
+    },
+    {
+      "title": "Nginx Connections",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 15 } }, "overrides": [] },
+      "targets": [
+        { "expr": "kong_nginx_connections_total{state=\"active\"}", "legendFormat": "active" },
+        { "expr": "kong_nginx_connections_total{state=\"reading\"}", "legendFormat": "reading" },
+        { "expr": "kong_nginx_connections_total{state=\"writing\"}", "legendFormat": "writing" },
+        { "expr": "kong_nginx_connections_total{state=\"waiting\"}", "legendFormat": "waiting" }
+      ]
+    },
+
+    {
+      "title": "Upstream Health",
+      "type": "table",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 28 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Value" }, "properties": [{ "id": "mappings", "value": [{ "options": { "0": { "text": "UNHEALTHY", "color": "red" }, "1": { "text": "HEALTHY", "color": "green" } }, "type": "value" }] }] }
+        ]
+      },
+      "transformations": [
+        { "id": "labelsToFields", "options": {} }
+      ],
+      "targets": [
+        { "expr": "kong_upstream_target_health{state=\"healthy\"}", "format": "table", "instant": true }
+      ]
+    },
+
+    {
+      "title": "Requests by Service & Status (drilldown)",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 34 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(increase(kong_http_requests_total[5m])) by (service, code)", "format": "table", "instant": true, "legendFormat": "" }
+      ],
+      "transformations": [
+        { "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "service": "Service", "code": "Status Code", "Value": "Requests (5m)" } } }
+      ]
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["kong", "clinicflow"],
+  "templating": { "list": [] },
+  "time": { "from": "now-30m", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "ClinicFlow - Kong Gateway Overview",
+  "uid": "clinicflow-kong",
+  "version": 1
+}
