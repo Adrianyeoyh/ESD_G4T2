@@ -4,7 +4,7 @@ from requests.exceptions import ConnectionError, RequestException, Timeout
 TIMEOUT_SECONDS = 8
 
 # UPDATED: Common paths based on typical project structures
-DRUGS_URLS = ["http://localhost:5081/drugs", "http://localhost:5081/drug", "http://localhost:5081/"]
+DRUGS_URLS = ["http://localhost:5001/drugs", "http://localhost:5001/drug", "http://localhost:5001/"]
 # UPDATED: Most orchestrators use /health or just / for status
 PAYMENT_URLS = ["http://localhost:5004/health", "http://localhost:5004/"]
 
