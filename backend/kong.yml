@@ -1,12 +1,46 @@
 _format_version: "3.0"
 
+plugins:
+  - name: cors
+    config:
+      origins:
+        - "*"
+      methods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - OPTIONS
+      headers:
+        - Content-Type
+        - Authorization
+        - X-Internal-Api-Key
+      credentials: false
+      preflight_continue: false
+
+  - name: prometheus
+    config:
+      per_consumer: false
+      status_code_metrics: true
+      latency_metrics: true
+      bandwidth_metrics: true
+      upstream_health_metrics: true
+
 services:
   - name: drug-catalogue
-    url: http://drug_service:5001
+    url: http://drug_catalogue_service:5001
     routes:
       - name: drug-catalogue-route
         paths:
           - /drug
+        strip_path: false
+
+  - name: invoice-service
+    url: http://invoice_service:5003
+    routes:
+      - name: invoice-route
+        paths:
+          - /invoice
         strip_path: false
 
   - name: payment-service
@@ -15,6 +49,14 @@ services:
       - name: payment-route
         paths:
           - /payments
+        strip_path: false
+
+  - name: prescription-service
+    url: http://prescription_service:5005
+    routes:
+      - name: prescription-route
+        paths:
+          - /prescription
         strip_path: false
 
   - name: prescribe-medicine

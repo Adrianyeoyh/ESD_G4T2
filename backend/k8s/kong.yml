@@ -10,6 +10,23 @@ data:
     _format_version: "3.0"
 
     plugins:
+      - name: cors
+        config:
+          origins:
+            - "*"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - OPTIONS
+          headers:
+            - Content-Type
+            - Authorization
+            - X-Internal-Api-Key
+          credentials: false
+          preflight_continue: false
+
       - name: prometheus
         config:
           per_consumer: false
@@ -20,11 +37,19 @@ data:
 
     services:
       - name: drug-catalogue
-        url: http://drug-service:5001
+        url: http://drug-catalogue-service:5001
         routes:
           - name: drug-catalogue-route
             paths:
               - /drug
+            strip_path: false
+
+      - name: invoice-service
+        url: http://invoice-service:5003
+        routes:
+          - name: invoice-route
+            paths:
+              - /invoice
             strip_path: false
 
       - name: payment-service
@@ -33,6 +58,14 @@ data:
           - name: payment-route
             paths:
               - /payments
+            strip_path: false
+
+      - name: prescription-service
+        url: http://prescription-service:5005
+        routes:
+          - name: prescription-route
+            paths:
+              - /prescription
             strip_path: false
 
       - name: prescribe-medicine
@@ -76,6 +109,8 @@ spec:
               name: proxy
             - containerPort: 8001
               name: admin
+            - containerPort: 8002
+              name: manager
             - containerPort: 8100
               name: metrics
           env:
@@ -93,6 +128,8 @@ spec:
               value: /dev/stderr
             - name: KONG_ADMIN_LISTEN
               value: 0.0.0.0:8001
+            - name: KONG_ADMIN_GUI_LISTEN
+              value: 0.0.0.0:8002
             - name: KONG_STATUS_LISTEN
               value: 0.0.0.0:8100
           volumeMounts:
@@ -115,11 +152,11 @@ spec:
             timeoutSeconds: 5
           resources:
             requests:
-              cpu: 250m
-              memory: 512Mi
-            limits:
-              cpu: "1"
+              cpu: 500m
               memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 2Gi
       volumes:
         - name: kong-config
           configMap:
@@ -143,3 +180,9 @@ spec:
     - name: admin
       port: 8001
       targetPort: 8001
+    - name: manager
+      port: 8002
+      targetPort: 8002
+    - name: metrics
+      port: 8100
+      targetPort: 8100

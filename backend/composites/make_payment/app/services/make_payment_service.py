@@ -141,15 +141,16 @@ class MakePaymentService:
 
     def _get_patient_phone(self, record_id: int) -> str:
         record = records_client.get_record(record_id)
-        patient_id = record.get("patientId")
+        patient_id = record.get("patientId") or record.get("PatientId")
         if not patient_id:
             raise OrchestrationError(
                 message=f"Record {record_id} has no patientId",
                 error_code="MISSING_PATIENT_ID",
                 status_code=502,
             )
+        patient_id = str(patient_id).strip()
         patient = patient_client.get_patient(patient_id)
-        phone_no = patient.get("phoneNo")
+        phone_no = patient.get("phoneNo") or patient.get("PhoneNo")
         if not phone_no:
             raise OrchestrationError(
                 message=f"Patient {patient_id} has no phone number",

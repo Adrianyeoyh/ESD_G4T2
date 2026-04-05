@@ -4,9 +4,7 @@
 #
 # This configures upstreams (with health checks) so Kong can
 # load-balance across replicas that Docker Compose scales.
-
 KONG_ADMIN="http://localhost:8001"
-
 echo "Waiting for Kong Admin API..."
 until curl -s "$KONG_ADMIN/status" > /dev/null 2>&1; do
   sleep 2
@@ -21,34 +19,31 @@ setup_service() {
   local host=$2   # Docker Compose service name
   local port=$3
   local path=$4   # route path prefix
+  local target="${host}:${port}"
 
   echo ""
   echo "=== Setting up: $name ==="
 
-  # 1. Create upstream with health checks
-  curl -s -X POST "$KONG_ADMIN/upstreams" \
-    --data "name=${name}.upstream" \
-    --data "healthchecks.active.http_path=/health" \
-    --data "healthchecks.active.healthy.interval=10" \
-    --data "healthchecks.active.unhealthy.interval=5" \
-    --data "healthchecks.active.unhealthy.tcp_failures=3" \
+  # 1. Upsert upstream with active checks effectively disabled (idempotent)
+  curl -s -X PUT "$KONG_ADMIN/upstreams/${name}.upstream" \
+    --data "healthchecks.active.healthy.interval=0" \
     > /dev/null
 
-  # 2. Add target (Docker DNS resolves to all replicas)
-  curl -s -X POST "$KONG_ADMIN/upstreams/${name}.upstream/targets" \
-    --data "target=${host}:${port}" \
-    > /dev/null
+  # 2. Add target only if not present (prevents duplicate target entries)
+  if ! curl -s "$KONG_ADMIN/upstreams/${name}.upstream/targets" | grep -q "\"target\":\"${target}\""; then
+    curl -s -X POST "$KONG_ADMIN/upstreams/${name}.upstream/targets" \
+      --data "target=${target}" \
+      > /dev/null
+  fi
 
-  # 3. Create service pointing to upstream
-  curl -s -X POST "$KONG_ADMIN/services" \
-    --data "name=${name}" \
+  # 3. Upsert service pointing to upstream
+  curl -s -X PUT "$KONG_ADMIN/services/${name}" \
     --data "host=${name}.upstream" \
     --data "port=${port}" \
     > /dev/null
 
-  # 4. Create route
-  curl -s -X POST "$KONG_ADMIN/services/${name}/routes" \
-    --data "name=${name}.route" \
+  # 4. Upsert route
+  curl -s -X PUT "$KONG_ADMIN/services/${name}/routes/${name}.route" \
     --data "paths[]=${path}" \
     --data "strip_path=false" \
     > /dev/null
@@ -62,12 +57,35 @@ setup_service() {
 # -------------------------------------------------------
 
 # Atomic services
-setup_service "drug-catalogue"     "drug_service"         5001 "/drug"
-setup_service "payment-service"    "payment_service"      5004 "/payments"
+setup_service "drug-catalogue"       "drug_catalogue_service" 5001 "/drug"
+setup_service "invoice-service"      "invoice_service"        5003 "/invoice"
+setup_service "payment-service"      "payment_service"        5004 "/payments"
+setup_service "prescription-service" "prescription_service"   5005 "/prescription"
 
 # Composite services
-setup_service "prescribe-medicine" "prescribe_medicine"   5007 "/prescribe"
-setup_service "make-payment"       "make_payment"         5008 "/make_payment"
+setup_service "prescribe-medicine" "prescribe_medicine"     5007 "/prescribe"
+setup_service "make-payment"       "make_payment"           5008 "/make_payment"
+
+# -------------------------------------------------------
+# Enable CORS plugin globally
+# -------------------------------------------------------
+echo ""
+echo "=== Enabling CORS plugin ==="
+curl -s -X POST "$KONG_ADMIN/plugins" \
+  --data "name=cors" \
+  --data "config.origins[]=*" \
+  --data "config.methods[]=GET" \
+  --data "config.methods[]=POST" \
+  --data "config.methods[]=PUT" \
+  --data "config.methods[]=DELETE" \
+  --data "config.methods[]=OPTIONS" \
+  --data "config.headers[]=Content-Type" \
+  --data "config.headers[]=Authorization" \
+  --data "config.headers[]=X-Internal-Api-Key" \
+  --data "config.credentials=false" \
+  --data "config.preflight_continue=false" \
+  > /dev/null
+echo "  CORS plugin enabled globally"
 
 # -------------------------------------------------------
 # Enable Prometheus plugin globally

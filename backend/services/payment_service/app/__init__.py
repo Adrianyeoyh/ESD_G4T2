@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import stripe
 
@@ -14,8 +15,14 @@ def create_app() -> FastAPI:
         version="1.0.0",
         description="Atomic microservice for payments and Stripe integration",
     )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:5173"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
-    # ── Global exception handlers ───────────────────────────────────────────
     @app.exception_handler(AppError)
     async def app_error_handler(request: Request, exc: AppError):
         return JSONResponse(
@@ -37,12 +44,8 @@ def create_app() -> FastAPI:
             content={"success": False, "data": None, "error": "Internal server error"},
         )
 
-    # ── Router registration ─────────────────────────────────────────────────
     app.include_router(payment_router)
     app.include_router(health_router)
-
-    # ── DB schema management ────────────────────────────────────────────────
-    # Safe for dev: create_all is idempotent (skips existing tables).
     Base.metadata.create_all(bind=engine)
 
     return app

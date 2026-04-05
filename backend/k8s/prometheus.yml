@@ -11,12 +11,72 @@ data:
       scrape_interval: 15s
       evaluation_interval: 15s
 
+    rule_files:
+      - /etc/prometheus/alerts.yml
+
     scrape_configs:
       - job_name: kong
         scrape_interval: 5s
         static_configs:
           - targets:
               - kong:8100
+
+  alerts.yml: |
+    groups:
+      - name: kong_alerts
+        rules:
+          - alert: HighErrorRate
+            expr: |
+              sum(rate(kong_http_requests_total{code=~"5.."}[5m]))
+              /
+              sum(rate(kong_http_requests_total[5m]))
+              > 0.05
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "High 5xx error rate"
+              description: "More than 5% of requests are returning 5xx errors for the last 2 minutes."
+
+          - alert: ServiceDown
+            expr: up{job="kong"} == 0
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Kong is unreachable"
+              description: "Prometheus cannot scrape Kong metrics — gateway may be down."
+
+          - alert: HighLatency
+            expr: |
+              histogram_quantile(0.99, sum(rate(kong_request_latency_ms_bucket[5m])) by (le, service))
+              > 2000
+            for: 3m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High request latency on {{ $labels.service }}"
+              description: "p99 latency is above 2 seconds on {{ $labels.service }} for 3 minutes."
+
+          - alert: HighUpstreamLatency
+            expr: |
+              histogram_quantile(0.99, sum(rate(kong_upstream_latency_ms_bucket[5m])) by (le, service))
+              > 1500
+            for: 3m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Upstream slow for {{ $labels.service }}"
+              description: "Backend p99 latency is above 1.5s on {{ $labels.service }}."
+
+          - alert: UpstreamUnhealthy
+            expr: kong_upstream_target_health{state="unhealthy"} > 0
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Upstream target unhealthy: {{ $labels.upstream }}"
+              description: "{{ $labels.target }} in {{ $labels.upstream }} is unhealthy."
 ---
 apiVersion: apps/v1
 kind: Deployment

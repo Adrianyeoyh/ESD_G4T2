@@ -28,6 +28,15 @@ spec:
               value: http://invoice-service:5003
             - name: PAYMENT_SERVICE_URL
               value: http://payment-service:5004
+            - name: RECORDS_SERVICE_URL
+              value: https://personal-iipxahjd.outsystemscloud.com/ClinicalRecordServices/rest/RecordsAPI
+            - name: PATIENT_SERVICE_URL
+              value: https://personal-wv4mxqur.outsystemscloud.com/PatientService/rest/PatientAPI
+            - name: INTERNAL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: internal-api-key
+                  key: INTERNAL_API_KEY
             - name: RABBITMQ_HOST
               value: rabbitmq
             - name: RABBITMQ_PORT

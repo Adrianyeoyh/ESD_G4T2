@@ -10,12 +10,27 @@ CREATE TABLE IF NOT EXISTS drug_schema.drug (
     "drugName" VARCHAR(255) NOT NULL,
     quantity   INTEGER      NOT NULL DEFAULT 0,
     price      NUMERIC(10, 2) NOT NULL,
+    purpose    VARCHAR(255),
+    "recommendedDosage" VARCHAR(255),
+    remarks    VARCHAR(500),
     CONSTRAINT uq_drug_name            UNIQUE ("drugName"),
     CONSTRAINT ck_quantity_non_negative CHECK (quantity >= 0),
     CONSTRAINT ck_price_positive        CHECK (price > 0)
 );
 
 CREATE INDEX IF NOT EXISTS ix_drug_name_ci ON drug_schema.drug (lower("drugName"));
+
+-- Seed data for drug catalogue
+INSERT INTO drug_schema.drug ("drugName", quantity, price) VALUES
+    ('Paracetamol 500mg', 100, 5.50),
+    ('Ibuprofen 400mg', 75, 8.00),
+    ('Amoxicillin 250mg', 50, 12.50),
+    ('Omeprazole 20mg', 60, 15.00),
+    ('Metformin 500mg', 80, 10.00),
+    ('Loratadine 10mg', 120, 6.50),
+    ('Cetirizine 10mg', 90, 5.00),
+    ('Aspirin 100mg', 200, 3.50)
+ON CONFLICT ("drugName") DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS prescription_schema.prescription (
     "prescriptionId" SERIAL PRIMARY KEY,
