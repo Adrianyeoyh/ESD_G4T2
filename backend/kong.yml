@@ -1,0 +1,34 @@
+_format_version: "3.0"
+
+services:
+  - name: drug-catalogue
+    url: http://drug_service:5001
+    routes:
+      - name: drug-catalogue-route
+        paths:
+          - /drug
+        strip_path: false
+
+  - name: payment-service
+    url: http://payment_service:5004
+    routes:
+      - name: payment-route
+        paths:
+          - /payments
+        strip_path: false
+
+  - name: prescribe-medicine
+    url: http://prescribe_medicine:5007
+    routes:
+      - name: prescribe-medicine-route
+        paths:
+          - /prescribe
+        strip_path: false
+
+  - name: make-payment
+    url: http://make_payment:5008
+    routes:
+      - name: make-payment-route
+        paths:
+          - /make_payment
+        strip_path: false

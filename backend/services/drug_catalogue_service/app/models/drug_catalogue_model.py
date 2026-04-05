@@ -1,6 +1,6 @@
 from sqlalchemy import CheckConstraint, Column, Index, Integer, Numeric, String, UniqueConstraint, func
 
-from app.config.drug_db import Base
+from app.config.drug_catalogue_db import Base
 from app.config.settings import DB_SCHEMA
 
 class Drug(Base):
@@ -10,9 +10,6 @@ class Drug(Base):
     drug_name = Column("drugName", String(255), nullable=False)
     quantity = Column(Integer, nullable=False, default=0)
     price = Column(Numeric(10, 2), nullable=False)
-    purpose = Column(String(255), nullable=True)
-    recommended_dosage = Column("recommendedDosage", String(255), nullable=True)
-    remarks = Column(String(500), nullable=True)
 
     __table_args__ = (
         UniqueConstraint("drugName", name="uq_drug_name"),

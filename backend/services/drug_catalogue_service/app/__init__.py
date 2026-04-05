@@ -1,34 +1,16 @@
+
 from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy import text
-
-from app.config.drug_db import Base, engine
-from app.config.settings import DB_SCHEMA
-from app.models import drug_model  # noqa: F401 - registers model on Base
-from app.routers.drug_router import router as drug_router
+from app.routers.drug_catalogue_router import router as drug_catalogue_router
+from app.config.drug_catalogue_db import Base, engine
+from app.models import drug_catalogue_model  # noqa: F401 — registers model on Base
 from utils.exceptions import AppError
-
 
 def create_app() -> FastAPI:
     app = FastAPI(
         title="Drug Catalogue Service",
         version="1.0.0",
         description="Atomic microservice for managing drug inventory",
-    )
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["http://localhost:5173"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
-        allow_methods=["*"],
-        allow_headers=["*"],
     )
 
     @app.exception_handler(AppError)
@@ -45,24 +27,12 @@ def create_app() -> FastAPI:
             content={"success": False, "data": None, "error": "Internal server error"},
         )
 
-    app.include_router(drug_router)
+    # ── Router registration ─────────────────────────────────────────────────
+    app.include_router(drug_catalogue_router)
 
+    # ── DB schema management ────────────────────────────────────────────────
     # Safe for dev: create_all is idempotent (skips existing tables).
     Base.metadata.create_all(bind=engine)
-
-    # Backfill new optional columns for local databases that already had the table.
-    with engine.begin() as conn:
-        conn.execute(
-            text(f'ALTER TABLE "{DB_SCHEMA}"."drug" ADD COLUMN IF NOT EXISTS "purpose" VARCHAR(255)')
-        )
-        conn.execute(
-            text(
-                f'ALTER TABLE "{DB_SCHEMA}"."drug" ADD COLUMN IF NOT EXISTS "recommendedDosage" VARCHAR(255)'
-            )
-        )
-        conn.execute(
-            text(f'ALTER TABLE "{DB_SCHEMA}"."drug" ADD COLUMN IF NOT EXISTS "remarks" VARCHAR(500)')
-        )
 
     return app
 

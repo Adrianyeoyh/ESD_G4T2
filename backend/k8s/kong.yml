@@ -1,0 +1,145 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kong-declarative-config
+  namespace: clinicflow
+  labels:
+    app: kong
+data:
+  kong.yml: |
+    _format_version: "3.0"
+
+    plugins:
+      - name: prometheus
+        config:
+          per_consumer: false
+          status_code_metrics: true
+          latency_metrics: true
+          bandwidth_metrics: true
+          upstream_health_metrics: true
+
+    services:
+      - name: drug-catalogue
+        url: http://drug-service:5001
+        routes:
+          - name: drug-catalogue-route
+            paths:
+              - /drug
+            strip_path: false
+
+      - name: payment-service
+        url: http://payment-service:5004
+        routes:
+          - name: payment-route
+            paths:
+              - /payments
+            strip_path: false
+
+      - name: prescribe-medicine
+        url: http://prescribe-medicine:5007
+        routes:
+          - name: prescribe-medicine-route
+            paths:
+              - /prescribe
+            strip_path: false
+
+      - name: make-payment
+        url: http://make-payment:5008
+        routes:
+          - name: make-payment-route
+            paths:
+              - /make_payment
+            strip_path: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kong
+  namespace: clinicflow
+  labels:
+    app: kong
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kong
+  template:
+    metadata:
+      labels:
+        app: kong
+    spec:
+      containers:
+        - name: kong
+          image: kong/kong-gateway:3.9
+          ports:
+            - containerPort: 8000
+              name: proxy
+            - containerPort: 8001
+              name: admin
+            - containerPort: 8100
+              name: metrics
+          env:
+            - name: KONG_DATABASE
+              value: "off"
+            - name: KONG_DECLARATIVE_CONFIG
+              value: /kong/kong.yml
+            - name: KONG_PROXY_ACCESS_LOG
+              value: /dev/stdout
+            - name: KONG_ADMIN_ACCESS_LOG
+              value: /dev/stdout
+            - name: KONG_PROXY_ERROR_LOG
+              value: /dev/stderr
+            - name: KONG_ADMIN_ERROR_LOG
+              value: /dev/stderr
+            - name: KONG_ADMIN_LISTEN
+              value: 0.0.0.0:8001
+            - name: KONG_STATUS_LISTEN
+              value: 0.0.0.0:8100
+          volumeMounts:
+            - name: kong-config
+              mountPath: /kong
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /status
+              port: 8100
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /status
+              port: 8100
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+      volumes:
+        - name: kong-config
+          configMap:
+            name: kong-declarative-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kong
+  namespace: clinicflow
+  labels:
+    app: kong
+spec:
+  type: LoadBalancer
+  selector:
+    app: kong
+  ports:
+    - name: proxy
+      port: 8000
+      targetPort: 8000
+    - name: admin
+      port: 8001
+      targetPort: 8001
