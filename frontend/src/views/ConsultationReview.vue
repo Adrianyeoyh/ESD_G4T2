@@ -7,8 +7,7 @@ const router = useRouter()
 
 const ENDPOINTS = {
   consultationBase:
-    import.meta.env.VITE_CONSULTATION_BASE ||
-    'https://personal-wv4mxqur.outsystemscloud.com/RecordVisitNotes/rest/ConsultationAPI',
+    import.meta.env.VITE_CONSULTATION_BASE || '/consultation-api',
   prescribeMedicineBase:
     import.meta.env.VITE_PRESCRIBE_MEDICINE_BASE || 'http://localhost:5007',
 }
@@ -142,10 +141,12 @@ const confirmSubmission = async () => {
     const consultationPayload = await parseResponsePayload(consultationResponse)
 
     if (!consultationResponse.ok) {
+      const statusHint = `Consultation API failed (${consultationResponse.status}).`
+      const serverMessage = consultationPayload?.message || consultationPayload?.error || ''
       throw new Error(
-        consultationPayload?.message ||
-          consultationPayload?.error ||
-          `Consultation failed (${consultationResponse.status})`,
+        serverMessage && String(serverMessage).trim().toLowerCase() !== 'consultation failed'
+          ? String(serverMessage).trim()
+          : `${statusHint} RecordVisitNotes service may be down.`,
       )
     }
 
@@ -170,7 +171,7 @@ const confirmSubmission = async () => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(selectedDrugItems),
+        body: JSON.stringify({ drugs: selectedDrugItems }),
       },
     )
 

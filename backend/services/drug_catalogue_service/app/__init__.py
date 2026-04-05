@@ -24,6 +24,13 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
     @app.exception_handler(AppError)
     async def app_error_handler(request: Request, exc: AppError):
         return JSONResponse(
