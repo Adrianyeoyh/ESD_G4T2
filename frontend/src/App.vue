@@ -1,19 +1,27 @@
-﻿<script setup>
+﻿﻿<script setup>
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import axios from "axios";
 import { loadStripe } from "@stripe/stripe-js";
 import { useRoute, useRouter } from "vue-router";
 import {
+  AlertCircle,
+  ArrowUpDown,
+  ChevronDown,
+  ChevronUp,
+  CircleCheckBig,
   CreditCard,
   FileText,
   LoaderCircle,
   Pill,
   Plus,
+  SquarePen,
+  Trash2,
   UserPlus,
   Users,
   Wallet,
-} from 'lucide-vue-next'
-import ConsultationReview from './views/ConsultationReview.vue'
+  X,
+} from "lucide-vue-next";
+import ConsultationReview from "./views/ConsultationReview.vue";
 
 const ENDPOINTS = {
   drugsPrimary: '/drug',
@@ -46,12 +54,181 @@ const isConsultationReviewPage = computed(
   () => route.name === "consultation-review",
 );
 
-const inventory = ref([])
-const records = ref([])
-const loadingInventory = ref(false)
-const loadingRecords = ref(false)
-const inventoryError = ref('')
-const recordsError = ref('')
+const inventory = ref([]);
+const records = ref([]);
+const loadingInventory = ref(false);
+const loadingRecords = ref(false);
+const inventoryError = ref("");
+const recordsError = ref("");
+
+// Inventory search & filter
+const inventorySearch = ref("");
+const inventoryNotice = ref("");
+
+// Patients state
+const patientsData = ref([]);
+const patientsSearch = ref("");
+const loadingPatients = ref(false);
+const patientsError = ref("");
+const selectedPatientDetails = ref(null);
+
+// Inventory sorting state
+const inventorySortKey = ref("name"); // 'name' | 'stock' | 'price'
+const inventorySortOrder = ref("asc"); // 'asc' | 'desc'
+
+// Inventory CRUD state
+const deletingDrugId = ref(null);
+const deletingDrugError = ref("");
+const expandedDrugIds = ref([]);
+const deleteDrugConfirmOpen = ref(false);
+const deleteDrugTarget = ref(null);
+
+// Add drug modal state
+const addDrugModalOpen = ref(false);
+const addingDrug = ref(false);
+const addDrugError = ref("");
+const addDrugForm = ref({
+  drugName: "",
+  quantity: 0,
+  price: 0,
+  purpose: "",
+  dosage: "",
+  remarks: "",
+});
+
+// Edit drug modal state
+const editDrugModalOpen = ref(false);
+const editingDrug = ref(false);
+const editDrugError = ref("");
+const editDrugForm = ref({
+  drugId: null,
+  drugName: "",
+  quantity: 0,
+  price: 0,
+  purpose: "",
+  dosage: "",
+  remarks: "",
+});
+
+// Toast notifications
+const toasts = ref([]);
+let toastCounter = 0;
+
+const dismissToast = (toastId) => {
+  toasts.value = toasts.value.filter((item) => item.id !== toastId);
+};
+
+const showToast = (message, type = "success") => {
+  const id = toastCounter++;
+  toasts.value = [...toasts.value, { id, message, type }];
+  window.setTimeout(() => {
+    dismissToast(id);
+  }, 3000);
+};
+
+// Helper functions for drug data
+const getDrugId = (drug) =>
+  Number(drug?.drugId ?? drug?.drug_id ?? drug?.Id ?? drug?.id ?? 0);
+
+const normalizeDrug = (drug) => {
+  const normalizedId = getDrugId(drug);
+  const normalizedQuantity = Number(drug?.quantity ?? drug?.stock ?? 0);
+  const normalizedPrice = Number(drug?.price ?? 0);
+  const normalizedDosage = String(
+    drug?.dosage ?? drug?.recommendedDosage ?? drug?.recommended_dosage ?? "",
+  ).trim();
+  return {
+    ...drug,
+    id: normalizedId,
+    drugId: normalizedId,
+    name: drug?.name ?? drug?.drugName ?? drug?.drug_name ?? "",
+    drugName: drug?.name ?? drug?.drugName ?? drug?.drug_name ?? "",
+    quantity: Number.isFinite(normalizedQuantity) ? normalizedQuantity : 0,
+    price: Number.isFinite(normalizedPrice) ? normalizedPrice : 0,
+    purpose: String(drug?.purpose ?? "").trim(),
+    dosage: normalizedDosage,
+    recommendedDosage: normalizedDosage,
+    remarks: String(drug?.remarks ?? "").trim(),
+  };
+};
+
+// Filtered patients (search)
+const filteredPatients = computed(() => {
+  const query = String(patientsSearch.value || "")
+    .trim()
+    .toLowerCase();
+  if (!query) {
+    return patientsData.value;
+  }
+  return patientsData.value.filter(
+    (patient) =>
+      String(patient.name || "")
+        .toLowerCase()
+        .includes(query) ||
+      String(patient.patientId || "")
+        .toLowerCase()
+        .includes(query) ||
+      String(patient.email || "")
+        .toLowerCase()
+        .includes(query),
+  );
+});
+
+// Filtered inventory (search)
+const filteredInventory = computed(() => {
+  const query = String(inventorySearch.value || "")
+    .trim()
+    .toLowerCase();
+  if (!query) {
+    return inventory.value;
+  }
+  return inventory.value.filter(
+    (drug) =>
+      String(drug.name ?? drug.drugName ?? "")
+        .toLowerCase()
+        .includes(query) ||
+      String(drug.purpose ?? "")
+        .toLowerCase()
+        .includes(query),
+  );
+});
+
+// Sorted inventory (applies sorting to filtered results)
+const sortedInventory = computed(() => {
+  const sorted = [...filteredInventory.value];
+  const key = inventorySortKey.value;
+  const order = inventorySortOrder.value;
+
+  sorted.sort((a, b) => {
+    let aVal, bVal;
+    if (key === "name") {
+      aVal = String(a.name ?? a.drug_name ?? "").toLowerCase();
+      bVal = String(b.name ?? b.drug_name ?? "").toLowerCase();
+      return order === "asc"
+        ? aVal.localeCompare(bVal)
+        : bVal.localeCompare(aVal);
+    } else if (key === "stock") {
+      aVal = Number(a.quantity ?? a.stock ?? 0);
+      bVal = Number(b.quantity ?? b.stock ?? 0);
+    } else if (key === "price") {
+      aVal = Number(a.price ?? 0);
+      bVal = Number(b.price ?? 0);
+    }
+    return order === "asc" ? aVal - bVal : bVal - aVal;
+  });
+
+  return sorted;
+});
+
+const toggleInventorySort = (key) => {
+  if (inventorySortKey.value === key) {
+    inventorySortOrder.value =
+      inventorySortOrder.value === "asc" ? "desc" : "asc";
+  } else {
+    inventorySortKey.value = key;
+    inventorySortOrder.value = "asc";
+  }
+};
 
 const patientHistoryForm = ref({
   patientId: "",
@@ -93,17 +270,17 @@ const outsystemsSyncCounter = ref(0);
 const outsystemsSyncing = computed(() => outsystemsSyncCounter.value > 0);
 
 const consultationForm = ref({
-  patientId: '',
-  visitNotes: '',
-})
-const consultationDrugSearch = ref('')
-const consultationDrugSelections = ref({})
-const submittingConsultation = ref(false)
-const consultationError = ref('')
-const consultationSuccess = ref('')
-const consultationNewRecord = ref(null)
-const consultationRecordId = ref(null)
-const consultationHistory = ref([])
+  patientId: "",
+  visitNotes: "",
+});
+const consultationDrugSearch = ref("");
+const consultationDrugSelections = ref({});
+const submittingConsultation = ref(false);
+const consultationError = ref("");
+const consultationSuccess = ref("");
+const consultationNewRecord = ref(null);
+const consultationRecordId = ref(null);
+const consultationHistory = ref([]);
 
 const normalizeConsultationDrug = (drug, idx) => ({
   id: Number(drug.drugId ?? drug.id ?? drug.Id ?? idx + 1),
@@ -269,18 +446,19 @@ const dispensingRecordId = ref(null);
 const dispenseError = ref("");
 const dispenseSuccess = ref("");
 
-const billingRows = ref([])
-const loadingBilling = ref(false)
-const billingError = ref('')
-const markingPaidId = ref(null)
-const billingSuccess = ref('')
+const billingRows = ref([]);
+const loadingBilling = ref(false);
+const billingError = ref("");
+const markingPaidId = ref(null);
+const billingSuccess = ref("");
 
 const navItems = [
-  { key: 'inventory', label: 'Inventory', icon: Pill },
-  { key: 'records', label: 'Records', icon: FileText },
-  { key: 'history', label: 'Patient History', icon: FileText },
-  { key: 'payments', label: 'Payments', icon: CreditCard },
-]
+  { key: "inventory", label: "Inventory", icon: Pill },
+  { key: "records", label: "Consultation", icon: FileText },
+  { key: "history", label: "Patient History", icon: FileText },
+  { key: "patients", label: "All Patients", icon: Users },
+  { key: "payments", label: "Payments", icon: CreditCard },
+];
 
 const pendingInvoices = computed(() =>
   records.value
@@ -298,13 +476,18 @@ const pendingInvoices = computed(() =>
         record.name ??
         "Unknown patient"
       ).trim(),
-      amount: Number(record.amount ?? record.total_amount ?? record.TotalAmount ?? 0),
-      currency: String(record.currency ?? record.Currency ?? 'SGD').trim(),
-      status: String(record.status ?? record.Status ?? 'PENDING').toUpperCase().trim(),
-      diagnosis: String(record.diagnosis ?? record.Diagnosis ?? 'N/A').trim(),
+      amount: Number(
+        record.amount ?? record.total_amount ?? record.TotalAmount ?? 0,
+      ),
+      nric: String(record.nric ?? record.NRIC ?? record.Nric ?? "").trim(),
+      currency: String(record.currency ?? record.Currency ?? "SGD").trim(),
+      status: String(record.status ?? record.Status ?? "PENDING")
+        .toUpperCase()
+        .trim(),
+      diagnosis: String(record.diagnosis ?? record.Diagnosis ?? "N/A").trim(),
     }))
-    .filter((item) => item.status !== 'PAID'),
-)
+    .filter((item) => item.status !== "PAID"),
+);
 
 const normalizedRecords = computed(() =>
   records.value.map((record, idx) => {
@@ -480,12 +663,29 @@ const beginOutsystemsSync = () => {
 };
 
 const endOutsystemsSync = () => {
-  outsystemsSyncCounter.value = Math.max(0, outsystemsSyncCounter.value - 1)
-}
+  outsystemsSyncCounter.value = Math.max(0, outsystemsSyncCounter.value - 1);
+};
+
+const fetchPatients = async () => {
+  loadingPatients.value = true;
+  patientsError.value = "";
+
+  try {
+    const response = await axios.get(ENDPOINTS.patientsList);
+    patientsData.value = Array.isArray(response.data)
+      ? response.data
+      : response.data?.data || [];
+  } catch (error) {
+    patientsError.value = error?.message || "Unable to fetch patients list.";
+  } finally {
+    loadingPatients.value = false;
+  }
+};
 
 const fetchDrugs = async () => {
-  loadingInventory.value = true
-  inventoryError.value = ''
+  loadingInventory.value = true;
+  inventoryError.value = "";
+  inventoryNotice.value = "";
 
   try {
     let response;
@@ -500,7 +700,7 @@ const fetchDrugs = async () => {
     syncConsultationDrugSelections();
 
     if (!rows.length) {
-      inventoryError.value = 'Drug service connected, but no inventory rows were returned.'
+      inventoryNotice.value = 'Connected to the drug service via Kong. Inventory is currently empty.'
     }
   } catch (error) {
     console.error("Drug API Error:", error?.response);
@@ -510,26 +710,231 @@ const fetchDrugs = async () => {
   } finally {
     loadingInventory.value = false;
   }
-}
+};
+
+// Add Drug Modal Functions
+const openAddDrugModal = () => {
+  addDrugError.value = "";
+  addDrugForm.value = {
+    drugName: "",
+    quantity: 0,
+    price: 0,
+    purpose: "",
+    dosage: "",
+    remarks: "",
+  };
+  addDrugModalOpen.value = true;
+};
+
+const closeAddDrugModal = () => {
+  addDrugModalOpen.value = false;
+};
+
+const updateAddDrugField = (key, value) => {
+  addDrugForm.value = { ...addDrugForm.value, [key]: value };
+};
+
+const submitAddDrug = async () => {
+  addDrugError.value = "";
+  const drugData = {
+    drugName: String(addDrugForm.value.drugName || "").trim(),
+    quantity: Number(addDrugForm.value.quantity),
+    price: Number(addDrugForm.value.price),
+    purpose: String(addDrugForm.value.purpose || "").trim() || null,
+    dosage: String(addDrugForm.value.dosage || "").trim() || null,
+    remarks: String(addDrugForm.value.remarks || "").trim() || null,
+  };
+
+  if (!drugData.drugName) {
+    addDrugError.value = "Drug Name is required.";
+    return;
+  }
+  if (!Number.isFinite(drugData.quantity) || drugData.quantity < 0) {
+    addDrugError.value = "Stock Quantity must be 0 or greater.";
+    return;
+  }
+  if (!Number.isFinite(drugData.price) || drugData.price <= 0) {
+    addDrugError.value = "Unit Price must be greater than 0.";
+    return;
+  }
+
+  addingDrug.value = true;
+  try {
+    await axios.post(ENDPOINTS.drugsPrimary, {
+      ...drugData,
+      recommendedDosage: drugData.dosage,
+    });
+    await fetchDrugs();
+    closeAddDrugModal();
+    showToast(`Drug ${drugData.drugName} added successfully!`, "success");
+  } catch (error) {
+    addDrugError.value =
+      error?.response?.data?.error ||
+      error?.response?.data?.message ||
+      "Unable to add drug.";
+    showToast(addDrugError.value, "error");
+  } finally {
+    addingDrug.value = false;
+  }
+};
+
+// Edit Drug Modal Functions
+const openEditDrugModal = (drug) => {
+  editDrugError.value = "";
+  editDrugForm.value = {
+    drugId: getDrugId(drug),
+    drugName: drug.name ?? drug.drugName ?? drug.drug_name ?? "",
+    quantity: Number(drug.quantity ?? drug.stock ?? 0),
+    price: Number(drug.price ?? 0),
+    purpose: String(drug.purpose || ""),
+    dosage: String(drug.dosage || drug.recommendedDosage || ""),
+    remarks: String(drug.remarks || ""),
+  };
+  editDrugModalOpen.value = true;
+};
+
+const closeEditDrugModal = () => {
+  editDrugModalOpen.value = false;
+};
+
+const updateEditDrugField = (key, value) => {
+  editDrugForm.value = { ...editDrugForm.value, [key]: value };
+};
+
+const submitEditDrug = async () => {
+  editDrugError.value = "";
+  const drugId = Number(editDrugForm.value.drugId);
+  const quantity = Number(editDrugForm.value.quantity);
+  const price = Number(editDrugForm.value.price);
+  const purpose = String(editDrugForm.value.purpose || "").trim() || null;
+  const dosage = String(editDrugForm.value.dosage || "").trim() || null;
+  const remarks = String(editDrugForm.value.remarks || "").trim() || null;
+
+  if (!Number.isFinite(drugId) || drugId <= 0) {
+    editDrugError.value = "Invalid drug selected.";
+    return;
+  }
+  if (!Number.isFinite(quantity) || quantity < 0) {
+    editDrugError.value = "Stock Quantity must be 0 or greater.";
+    return;
+  }
+  if (!Number.isFinite(price) || price <= 0) {
+    editDrugError.value = "Unit Price must be greater than 0.";
+    return;
+  }
+
+  editingDrug.value = true;
+  try {
+    const drugName = String(editDrugForm.value.drugName || "").trim();
+    if (!drugName) {
+      editDrugError.value = "Drug Name is required.";
+      return;
+    }
+
+    await axios.put(`${ENDPOINTS.drugsPrimary}/${drugId}`, {
+      drugName,
+      quantity,
+      price,
+    });
+    await fetchDrugs();
+    closeEditDrugModal();
+    showToast("Inventory updated successfully!", "success");
+  } catch (error) {
+    editDrugError.value =
+      error?.response?.data?.error ||
+      error?.response?.data?.message ||
+      "Unable to update drug.";
+    showToast(editDrugError.value, "error");
+  } finally {
+    editingDrug.value = false;
+  }
+};
+
+const openDeleteDrugConfirm = (drug) => {
+  const drugId = getDrugId(drug);
+  const drugName = drug?.name ?? drug?.drugName ?? "this drug";
+  deletingDrugError.value = "";
+
+  if (!Number.isFinite(drugId) || drugId <= 0) {
+    deletingDrugError.value = "Invalid drugId selected for deletion.";
+    return;
+  }
+
+  deleteDrugTarget.value = { drugId, drugName };
+  deleteDrugConfirmOpen.value = true;
+};
+
+const closeDeleteDrugConfirm = () => {
+  deleteDrugConfirmOpen.value = false;
+  deleteDrugTarget.value = null;
+};
+
+// Delete Drug Function
+const deleteDrug = async () => {
+  const drugId = Number(deleteDrugTarget.value?.drugId);
+  const drugName = String(deleteDrugTarget.value?.drugName || "this drug");
+  deletingDrugError.value = "";
+
+  if (!Number.isFinite(drugId) || drugId <= 0) {
+    deletingDrugError.value = "Invalid drugId selected for deletion.";
+    closeDeleteDrugConfirm();
+    return;
+  }
+
+  deletingDrugId.value = drugId;
+  try {
+    await axios.delete(`${ENDPOINTS.drugsPrimary}/${drugId}`);
+    expandedDrugIds.value = expandedDrugIds.value.filter((id) => id !== drugId);
+    await fetchDrugs();
+    showToast(`Drug ${drugName} removed from inventory.`, "success");
+    closeDeleteDrugConfirm();
+  } catch (error) {
+    deletingDrugError.value =
+      error?.response?.data?.error ||
+      error?.response?.data?.message ||
+      "Unable to delete drug.";
+    showToast(deletingDrugError.value, "error");
+  } finally {
+    deletingDrugId.value = null;
+  }
+};
+
+// Expandable Drug Details
+const toggleDrugDetails = (drugId) => {
+  const normalizedId = Number(drugId);
+  if (!Number.isFinite(normalizedId) || normalizedId <= 0) {
+    return;
+  }
+  if (expandedDrugIds.value.includes(normalizedId)) {
+    expandedDrugIds.value = expandedDrugIds.value.filter(
+      (id) => id !== normalizedId,
+    );
+    return;
+  }
+  expandedDrugIds.value = [...expandedDrugIds.value, normalizedId];
+};
+
+const isDrugExpanded = (drugId) =>
+  expandedDrugIds.value.includes(Number(drugId));
 
 const fetchRecords = async () => {
-  loadingRecords.value = true
-  recordsError.value = ''
-  beginOutsystemsSync()
+  loadingRecords.value = true;
+  recordsError.value = "";
+  beginOutsystemsSync();
 
   try {
-    const response = await axios.get(ENDPOINTS.records)
-    records.value = normalizeArrayResponse(response.data)
+    const response = await axios.get(ENDPOINTS.records);
+    records.value = normalizeArrayResponse(response.data);
   } catch (error) {
     recordsError.value =
       error?.response?.data?.message ||
-      'Unable to load Clinical Records from OutSystems.'
-    records.value = []
+      "Unable to load Clinical Records from OutSystems.";
+    records.value = [];
   } finally {
-    loadingRecords.value = false
-    endOutsystemsSync()
+    loadingRecords.value = false;
+    endOutsystemsSync();
   }
-}
+};
 
 const submitConsultation = async () => {
   consultationError.value = "";
@@ -541,8 +946,8 @@ const submitConsultation = async () => {
   const patientId = String(consultationForm.value.patientId || "").trim();
   const visitNotes = String(consultationForm.value.visitNotes || "").trim();
   if (!patientId || !visitNotes) {
-    consultationError.value = 'patientId and visitNotes are required.'
-    return
+    consultationError.value = "patientId and visitNotes are required.";
+    return;
   }
 
   const draft = buildConsultationDraft();
@@ -608,27 +1013,29 @@ const dispenseRecord = async (record) => {
       return {
         ...item,
         isClosed: true,
-        status: 'CLOSED',
-      }
-    })
+        status: "CLOSED",
+      };
+    });
 
     // Reflect stock update logic-wise by decrementing one in-stock item.
-    const stockIdx = inventory.value.findIndex((item) => Number(item.quantity ?? item.stock ?? 0) > 0)
+    const stockIdx = inventory.value.findIndex(
+      (item) => Number(item.quantity ?? item.stock ?? 0) > 0,
+    );
     if (stockIdx >= 0) {
-      const stockItem = inventory.value[stockIdx]
-      const currentQty = Number(stockItem.quantity ?? stockItem.stock ?? 0)
-      const nextQty = Math.max(0, currentQty - 1)
+      const stockItem = inventory.value[stockIdx];
+      const currentQty = Number(stockItem.quantity ?? stockItem.stock ?? 0);
+      const nextQty = Math.max(0, currentQty - 1);
       inventory.value[stockIdx] = {
         ...stockItem,
         quantity: nextQty,
         stock: nextQty,
-      }
+      };
     }
 
-    dispenseSuccess.value = `Record ${updatedRecordId} dispensed and closed.`
-    await loadBillingRows()
+    dispenseSuccess.value = `Record ${updatedRecordId} dispensed and closed.`;
+    await loadBillingRows();
   } catch (error) {
-    dispenseError.value = error?.message || 'Unable to dispense this record.'
+    dispenseError.value = error?.message || "Unable to dispense this record.";
   } finally {
     dispensingRecordId.value = null;
     endOutsystemsSync();
@@ -655,7 +1062,7 @@ const loadBillingRows = async () => {
       ? payload
       : Array.isArray(payload?.data)
         ? payload.data
-        : []
+        : [];
     billingRows.value = rows.map((row, idx) => ({
       Id: Number(row.Id ?? row.id ?? idx + 1),
       patientName: row.patientName ?? row.name ?? "Unknown patient",
@@ -663,10 +1070,9 @@ const loadBillingRows = async () => {
       VisitNotes: row.VisitNotes ?? row.visitNotes ?? "",
       email: row.email ?? "",
       isPaid: Boolean(row.isPaid ?? row.paid ?? false),
-    }))
+    }));
   } catch {
     // Fallback: derive billing-ready rows from closed records.
-    billingRows.value = normalizedRecords.value
     billingRows.value = normalizedRecords.value
       .filter((row) => row.isClosed)
       .map((row) => ({
@@ -675,8 +1081,8 @@ const loadBillingRows = async () => {
         nric: row.nric,
         VisitNotes: row.VisitNotes,
         email: row.email,
-        isPaid: String(row.status).toUpperCase() === 'PAID',
-      }))
+        isPaid: String(row.status).toUpperCase() === "PAID",
+      }));
   } finally {
     loadingBilling.value = false;
   }
@@ -965,9 +1371,13 @@ watch(
 );
 
 onMounted(async () => {
-  const query = new URLSearchParams(window.location.search)
-  if (window.location.pathname === '/success') {
-    window.history.replaceState({}, '', `/payment-success${window.location.search}`)
+  const query = new URLSearchParams(window.location.search);
+  if (window.location.pathname === "/success") {
+    window.history.replaceState(
+      {},
+      "",
+      `/payment-success${window.location.search}`,
+    );
   }
 
   if (window.location.pathname === "/payment-success") {
@@ -1063,8 +1473,12 @@ onMounted(async () => {
       <main class="flex-1 px-10 py-8">
         <header class="mb-8 flex items-center justify-between">
           <div>
-            <h2 class="text-3xl font-semibold tracking-tight">{{ navItems.find((item) => item.key === activeView)?.label }}</h2>
-            <p class="mt-1 text-sm text-[#5f6368]">Google Stitch-inspired layout with spacing-first clinical clarity.</p>
+            <h2 class="text-3xl font-semibold tracking-tight">
+              {{ navItems.find((item) => item.key === activeView)?.label }}
+            </h2>
+            <p class="mt-1 text-sm text-[#5f6368]">
+              Google Stitch-inspired layout with spacing-first clinical clarity.
+            </p>
           </div>
 
           <div class="flex items-center gap-3">
@@ -1083,18 +1497,70 @@ onMounted(async () => {
           </div>
         </header>
 
-        <section v-if="activeView === 'inventory'" class="rounded-2xl border border-[#E8EAED] bg-white p-6">
-          <div class="mb-6 flex items-center gap-2">
-            <Pill class="h-5 w-5 text-[#1a73e8]" />
-            <h3 class="text-lg font-semibold">Drug Inventory</h3>
+        <section
+          v-if="activeView === 'inventory'"
+          class="rounded-2xl border border-[#E8EAED] bg-white p-6"
+        >
+          <div class="mb-6 flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <Pill class="h-5 w-5 text-[#1a73e8]" />
+              <h3 class="text-lg font-semibold">Drug Inventory</h3>
+            </div>
+            <button
+              class="inline-flex items-center gap-2 rounded-lg bg-[#1a73e8] px-3 py-2 text-sm font-medium text-white hover:bg-[#1765cc]"
+              @click="openAddDrugModal"
+            >
+              <Plus class="h-4 w-4" />
+              Add New Drug
+            </button>
           </div>
 
-          <p v-if="loadingInventory" class="text-sm text-[#5f6368]">Loading inventory...</p>
-          <p v-else-if="!inventoryError && inventory.length === 0" class="rounded-lg bg-[#FFF8E1] p-3 text-sm text-[#7A5C00]">
-            Inventory is currently empty. The OutSystems OSUSR_iipxahjd environment requires manual
-            data bootstrapping before medication rows appear.
+          <div class="mb-4">
+            <label
+              class="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-[#5f6368]"
+            >
+              Search Drug
+            </label>
+            <input
+              v-model="inventorySearch"
+              class="w-full rounded-lg border border-[#DADCE0] px-3 py-2 text-sm focus:border-[#1a73e8] focus:outline-none"
+              placeholder="Search by drug name or purpose..."
+            />
+          </div>
+
+          <p v-if="loadingInventory" class="text-sm text-[#5f6368]">
+            Loading inventory...
           </p>
-          <p v-else-if="inventoryError" class="rounded-lg bg-[#FDECEC] p-3 text-sm text-[#B3261E]">{{ inventoryError }}</p>
+          <p
+            v-else-if="!inventoryError && inventory.length === 0"
+            class="rounded-lg bg-[#FFF8E1] p-3 text-sm text-[#7A5C00]"
+          >
+            Inventory is currently empty.
+          </p>
+          <p
+            v-else-if="!inventoryError && filteredInventory.length === 0"
+            class="rounded-lg bg-[#F8F9FA] p-3 text-sm text-[#5f6368]"
+          >
+            No drugs match your search.
+          </p>
+          <p
+            v-else-if="inventoryNotice"
+            class="rounded-lg bg-[#E8F0FE] p-3 text-sm text-[#1a73e8]"
+          >
+            {{ inventoryNotice }}
+          </p>
+          <p
+            v-else-if="inventoryError"
+            class="rounded-lg bg-[#FDECEC] p-3 text-sm text-[#B3261E]"
+          >
+            {{ inventoryError }}
+          </p>
+          <p
+            v-else-if="deletingDrugError"
+            class="rounded-lg bg-[#FDECEC] p-3 text-sm text-[#B3261E]"
+          >
+            {{ deletingDrugError }}
+          </p>
 
           <div
             v-else
@@ -1103,17 +1569,168 @@ onMounted(async () => {
             <table class="min-w-full divide-y divide-[#E8EAED] text-sm">
               <thead class="bg-[#F8F9FA]">
                 <tr class="text-left text-[#5f6368]">
-                  <th class="px-4 py-3 font-medium">Drug</th>
-                  <th class="px-4 py-3 font-medium">Stock</th>
-                  <th class="px-4 py-3 font-medium">Price (SGD)</th>
+                  <th
+                    class="cursor-pointer select-none px-4 py-3 font-medium transition hover:bg-[#E8EAED]"
+                    @click="toggleInventorySort('name')"
+                  >
+                    <span class="inline-flex items-center gap-1">
+                      Drug
+                      <ChevronUp
+                        v-if="
+                          inventorySortKey === 'name' &&
+                          inventorySortOrder === 'asc'
+                        "
+                        class="h-3.5 w-3.5"
+                      />
+                      <ChevronDown
+                        v-else-if="
+                          inventorySortKey === 'name' &&
+                          inventorySortOrder === 'desc'
+                        "
+                        class="h-3.5 w-3.5"
+                      />
+                      <ArrowUpDown v-else class="h-3.5 w-3.5 opacity-40" />
+                    </span>
+                  </th>
+                  <th
+                    class="cursor-pointer select-none px-4 py-3 font-medium transition hover:bg-[#E8EAED]"
+                    @click="toggleInventorySort('stock')"
+                  >
+                    <span class="inline-flex items-center gap-1">
+                      Stock
+                      <ChevronUp
+                        v-if="
+                          inventorySortKey === 'stock' &&
+                          inventorySortOrder === 'asc'
+                        "
+                        class="h-3.5 w-3.5"
+                      />
+                      <ChevronDown
+                        v-else-if="
+                          inventorySortKey === 'stock' &&
+                          inventorySortOrder === 'desc'
+                        "
+                        class="h-3.5 w-3.5"
+                      />
+                      <ArrowUpDown v-else class="h-3.5 w-3.5 opacity-40" />
+                    </span>
+                  </th>
+                  <th
+                    class="cursor-pointer select-none px-4 py-3 font-medium transition hover:bg-[#E8EAED]"
+                    @click="toggleInventorySort('price')"
+                  >
+                    <span class="inline-flex items-center gap-1">
+                      Price (SGD)
+                      <ChevronUp
+                        v-if="
+                          inventorySortKey === 'price' &&
+                          inventorySortOrder === 'asc'
+                        "
+                        class="h-3.5 w-3.5"
+                      />
+                      <ChevronDown
+                        v-else-if="
+                          inventorySortKey === 'price' &&
+                          inventorySortOrder === 'desc'
+                        "
+                        class="h-3.5 w-3.5"
+                      />
+                      <ArrowUpDown v-else class="h-3.5 w-3.5 opacity-40" />
+                    </span>
+                  </th>
+                  <th class="px-4 py-3 font-medium">Action</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-[#F1F3F4] bg-white">
-                <tr v-for="(drug, idx) in inventory" :key="drug.id ?? idx" class="hover:bg-[#F8F9FA]">
-                  <td class="px-4 py-3">{{ drug.name ?? drug.drug_name ?? 'Unnamed Drug' }}</td>
-                  <td class="px-4 py-3">{{ drug.quantity ?? drug.stock ?? 0 }}</td>
-                  <td class="px-4 py-3">{{ Number(drug.price ?? 0).toFixed(2) }}</td>
-                </tr>
+                <template
+                  v-for="(drug, idx) in sortedInventory"
+                  :key="drug.id ?? idx"
+                >
+                  <tr class="hover:bg-[#F8F9FA]">
+                    <td class="px-4 py-3">
+                      {{ drug.name ?? drug.drugName ?? "Unnamed Drug" }}
+                    </td>
+                    <td class="px-4 py-3">{{ drug.quantity ?? 0 }}</td>
+                    <td class="px-4 py-3">
+                      {{ Number(drug.price ?? 0).toFixed(2) }}
+                    </td>
+                    <td class="px-4 py-3">
+                      <div class="flex flex-wrap items-center gap-2">
+                        <button
+                          class="inline-flex items-center gap-1 rounded-lg border border-[#DADCE0] px-2.5 py-1.5 text-xs font-medium text-[#202124] hover:bg-[#F1F3F4]"
+                          @click="openEditDrugModal(drug)"
+                        >
+                          <SquarePen class="h-3.5 w-3.5" />
+                          Edit
+                        </button>
+                        <button
+                          class="inline-flex items-center gap-1 rounded-lg border border-[#DADCE0] px-2.5 py-1.5 text-xs font-medium text-[#1a73e8] hover:bg-[#E8F0FE]"
+                          @click="toggleDrugDetails(drug.id)"
+                        >
+                          <ChevronUp
+                            v-if="isDrugExpanded(drug.id)"
+                            class="h-3.5 w-3.5"
+                          />
+                          <ChevronDown v-else class="h-3.5 w-3.5" />
+                          Details
+                        </button>
+                        <button
+                          class="inline-flex items-center gap-1 rounded-lg border border-[#F4C7C3] px-2.5 py-1.5 text-xs font-medium text-[#B3261E] hover:bg-[#FDECEC] disabled:opacity-60"
+                          :disabled="deletingDrugId === drug.id"
+                          @click="openDeleteDrugConfirm(drug)"
+                        >
+                          <LoaderCircle
+                            v-if="deletingDrugId === drug.id"
+                            class="h-3.5 w-3.5 animate-spin"
+                          />
+                          <Trash2 v-else class="h-3.5 w-3.5" />
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr v-if="isDrugExpanded(drug.id)" class="bg-[#F8F9FA]">
+                    <td colspan="4" class="px-4 py-3">
+                      <p
+                        class="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[#1a73e8]"
+                      >
+                        Drug Details
+                      </p>
+                      <div class="grid gap-3 md:grid-cols-3">
+                        <div>
+                          <p
+                            class="text-xs font-semibold uppercase tracking-[0.08em] text-[#5f6368]"
+                          >
+                            Purpose
+                          </p>
+                          <p class="mt-1 text-sm text-[#202124]">
+                            {{ drug.purpose || "N/A" }}
+                          </p>
+                        </div>
+                        <div>
+                          <p
+                            class="text-xs font-semibold uppercase tracking-[0.08em] text-[#5f6368]"
+                          >
+                            Recommended Dosage
+                          </p>
+                          <p class="mt-1 text-sm text-[#202124]">
+                            {{ drug.dosage || drug.recommendedDosage || "N/A" }}
+                          </p>
+                        </div>
+                        <div>
+                          <p
+                            class="text-xs font-semibold uppercase tracking-[0.08em] text-[#5f6368]"
+                          >
+                            Remarks
+                          </p>
+                          <p class="mt-1 text-sm text-[#202124]">
+                            {{ drug.remarks || "None" }}
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                </template>
               </tbody>
             </table>
           </div>
@@ -1632,7 +2249,7 @@ onMounted(async () => {
                     <td class="px-4 py-3">{{ row.Id }}</td>
                     <td class="px-4 py-3">{{ row.patientName }}</td>
                     <td class="px-4 py-3">{{ row.nric }}</td>
-                    <td class="px-4 py-3">{{ row.VisitNotes || 'N/A' }}</td>
+                    <td class="px-4 py-3">{{ row.VisitNotes || "N/A" }}</td>
                     <td class="px-4 py-3">
                       <button
                         class="rounded-lg bg-[#1a73e8] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#1765cc] disabled:cursor-not-allowed disabled:opacity-60"
@@ -1839,34 +2456,423 @@ onMounted(async () => {
       </main>
     </div>
 
-    <div v-if="patientModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4">
+    <div
+      v-if="patientModalOpen"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4"
+    >
       <div class="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
         <div class="mb-5 flex items-center justify-between">
           <h3 class="text-xl font-semibold">Register Patient</h3>
-          <button class="rounded-lg p-2 hover:bg-[#F1F3F4]" @click="closePatientModal">
+          <button
+            class="rounded-lg p-2 hover:bg-[#F1F3F4]"
+            @click="closePatientModal"
+          >
             <Plus class="h-4 w-4 rotate-45" />
           </button>
         </div>
 
         <div class="grid gap-4">
-          <input v-model="patientForm.nric" class="rounded-lg border border-[#DADCE0] px-3 py-2 text-sm" placeholder="NRIC" />
-          <input v-model="patientForm.name" class="rounded-lg border border-[#DADCE0] px-3 py-2 text-sm" placeholder="Full Name" />
-          <input v-model="patientForm.phoneNo" class="rounded-lg border border-[#DADCE0] px-3 py-2 text-sm" placeholder="Phone Number" />
-          <input v-model="patientForm.email" class="rounded-lg border border-[#DADCE0] px-3 py-2 text-sm" placeholder="Email" />
+          <input
+            v-model="patientForm.patientId"
+            class="rounded-lg border border-[#DADCE0] px-3 py-2 text-sm"
+            placeholder="Patient ID (NRIC - 9 characters)"
+          />
+          <input
+            v-model="patientForm.name"
+            class="rounded-lg border border-[#DADCE0] px-3 py-2 text-sm"
+            placeholder="Full Name"
+          />
+          <input
+            v-model="patientForm.phoneNo"
+            class="rounded-lg border border-[#DADCE0] px-3 py-2 text-sm"
+            placeholder="Phone Number"
+          />
+          <input
+            v-model="patientForm.email"
+            class="rounded-lg border border-[#DADCE0] px-3 py-2 text-sm"
+            placeholder="Email"
+          />
         </div>
 
-        <p v-if="patientFormError" class="mt-4 rounded-lg bg-[#FDECEC] p-3 text-sm text-[#B3261E]">{{ patientFormError }}</p>
-        <p v-if="patientFormSuccess" class="mt-4 rounded-lg bg-[#E6F4EA] p-3 text-sm text-[#188038]">{{ patientFormSuccess }}</p>
+        <p
+          v-if="patientFormError"
+          class="mt-4 rounded-lg bg-[#FDECEC] p-3 text-sm text-[#B3261E]"
+        >
+          {{ patientFormError }}
+        </p>
+        <p
+          v-if="patientFormSuccess"
+          class="mt-4 rounded-lg bg-[#E6F4EA] p-3 text-sm text-[#188038]"
+        >
+          {{ patientFormSuccess }}
+        </p>
 
         <div class="mt-5 flex justify-end gap-3">
-          <button class="rounded-lg border border-[#DADCE0] px-4 py-2 text-sm" @click="closePatientModal">Cancel</button>
+          <button
+            class="rounded-lg border border-[#DADCE0] px-4 py-2 text-sm"
+            @click="closePatientModal"
+          >
+            Cancel
+          </button>
           <button
             class="inline-flex items-center gap-2 rounded-lg bg-[#1a73e8] px-4 py-2 text-sm font-medium text-white hover:bg-[#1765cc] disabled:opacity-60"
             :disabled="submittingPatient"
             @click="submitPatient"
           >
-            <LoaderCircle v-if="submittingPatient" class="h-4 w-4 animate-spin" />
+            <LoaderCircle
+              v-if="submittingPatient"
+              class="h-4 w-4 animate-spin"
+            />
             Submit
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Patient Details Modal -->
+    <div
+      v-if="selectedPatientDetails"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4"
+    >
+      <div class="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+        <div class="mb-5 flex items-center justify-between">
+          <h3 class="text-xl font-semibold">Patient Details</h3>
+          <button
+            class="rounded-lg p-2 hover:bg-[#F1F3F4]"
+            @click="selectedPatientDetails = null"
+          >
+            <X class="h-4 w-4" />
+          </button>
+        </div>
+
+        <div class="space-y-4">
+          <div>
+            <p
+              class="text-xs font-semibold uppercase tracking-[0.14em] text-[#5f6368]"
+            >
+              Patient ID (NRIC)
+            </p>
+            <p class="mt-1 text-lg font-semibold">
+              {{ selectedPatientDetails.patientId }}
+            </p>
+          </div>
+          <div>
+            <p
+              class="text-xs font-semibold uppercase tracking-[0.14em] text-[#5f6368]"
+            >
+              Full Name
+            </p>
+            <p class="mt-1 text-lg font-semibold">
+              {{ selectedPatientDetails.name }}
+            </p>
+          </div>
+          <div>
+            <p
+              class="text-xs font-semibold uppercase tracking-[0.14em] text-[#5f6368]"
+            >
+              Email
+            </p>
+            <p class="mt-1 text-base">
+              {{ selectedPatientDetails.email || "N/A" }}
+            </p>
+          </div>
+          <div>
+            <p
+              class="text-xs font-semibold uppercase tracking-[0.14em] text-[#5f6368]"
+            >
+              Phone Number
+            </p>
+            <p class="mt-1 text-base">
+              {{ selectedPatientDetails.phoneNo || "N/A" }}
+            </p>
+          </div>
+        </div>
+
+        <div class="mt-6 flex justify-end">
+          <button
+            class="rounded-lg border border-[#DADCE0] px-4 py-2 text-sm font-medium text-[#5f6368] hover:bg-[#F1F3F4]"
+            @click="selectedPatientDetails = null"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Delete Drug Confirm Modal -->
+    <div
+      v-if="deleteDrugConfirmOpen"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4"
+    >
+      <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+        <div class="mb-4 flex items-center justify-between">
+          <h3 class="text-xl font-semibold text-[#202124]">Confirm Deletion</h3>
+          <button
+            class="rounded-lg p-2 hover:bg-[#F1F3F4]"
+            @click="closeDeleteDrugConfirm"
+          >
+            <X class="h-4 w-4" />
+          </button>
+        </div>
+
+        <p class="text-sm text-[#5f6368]">
+          Are you sure you want to delete
+          <span class="font-semibold text-[#202124]">{{
+            deleteDrugTarget?.drugName || "this drug"
+          }}</span>
+          from inventory?
+        </p>
+        <p class="mt-2 text-xs text-[#B3261E]">This action cannot be undone.</p>
+
+        <div class="mt-6 flex justify-end gap-3">
+          <button
+            class="rounded-lg border border-[#DADCE0] px-4 py-2 text-sm"
+            @click="closeDeleteDrugConfirm"
+          >
+            Cancel
+          </button>
+          <button
+            class="inline-flex items-center gap-2 rounded-lg bg-[#B3261E] px-4 py-2 text-sm font-medium text-white hover:bg-[#8e1f16] disabled:opacity-60"
+            :disabled="deletingDrugId !== null"
+            @click="deleteDrug"
+          >
+            <LoaderCircle
+              v-if="deletingDrugId !== null"
+              class="h-4 w-4 animate-spin"
+            />
+            Delete Drug
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Add Drug Modal -->
+    <div
+      v-if="addDrugModalOpen"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4"
+    >
+      <div class="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+        <div class="mb-5 flex items-center justify-between">
+          <h3 class="text-xl font-semibold">Add New Drug</h3>
+          <button
+            class="rounded-lg p-2 hover:bg-[#F1F3F4]"
+            @click="closeAddDrugModal"
+          >
+            <X class="h-4 w-4" />
+          </button>
+        </div>
+
+        <div class="grid gap-4">
+          <div>
+            <label
+              class="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-[#5f6368]"
+              >Drug Name</label
+            >
+            <input
+              v-model="addDrugForm.drugName"
+              class="w-full rounded-lg border border-[#DADCE0] px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label
+              class="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-[#5f6368]"
+              >Unit Price ($)</label
+            >
+            <input
+              v-model.number="addDrugForm.price"
+              type="number"
+              min="0.01"
+              step="0.01"
+              class="w-full rounded-lg border border-[#DADCE0] px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label
+              class="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-[#5f6368]"
+              >Stock Quantity</label
+            >
+            <input
+              v-model.number="addDrugForm.quantity"
+              type="number"
+              min="0"
+              class="w-full rounded-lg border border-[#DADCE0] px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label
+              class="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-[#5f6368]"
+              >Purpose (Optional)</label
+            >
+            <input
+              :value="addDrugForm.purpose"
+              @input="updateAddDrugField('purpose', $event.target.value)"
+              class="w-full rounded-lg border border-[#DADCE0] px-3 py-2 text-sm"
+              placeholder="e.g. Pain relief"
+            />
+          </div>
+          <div>
+            <label
+              class="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-[#5f6368]"
+              >Recommended Dosage (Optional)</label
+            >
+            <input
+              :value="addDrugForm.dosage"
+              @input="updateAddDrugField('dosage', $event.target.value)"
+              class="w-full rounded-lg border border-[#DADCE0] px-3 py-2 text-sm"
+              placeholder="e.g. 3 times a day"
+            />
+          </div>
+          <div>
+            <label
+              class="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-[#5f6368]"
+              >Remarks (Optional)</label
+            >
+            <textarea
+              :value="addDrugForm.remarks"
+              @input="updateAddDrugField('remarks', $event.target.value)"
+              rows="3"
+              class="w-full rounded-lg border border-[#DADCE0] px-3 py-2 text-sm"
+              placeholder="Any notes for pharmacy staff"
+            ></textarea>
+          </div>
+        </div>
+
+        <p
+          v-if="addDrugError"
+          class="mt-4 rounded-lg bg-[#FDECEC] p-3 text-sm text-[#B3261E]"
+        >
+          {{ addDrugError }}
+        </p>
+
+        <div class="mt-5 flex justify-end gap-3">
+          <button
+            class="rounded-lg border border-[#DADCE0] px-4 py-2 text-sm"
+            @click="closeAddDrugModal"
+          >
+            Cancel
+          </button>
+          <button
+            class="inline-flex items-center gap-2 rounded-lg bg-[#1a73e8] px-4 py-2 text-sm font-medium text-white hover:bg-[#1765cc] disabled:opacity-60"
+            :disabled="addingDrug"
+            @click="submitAddDrug"
+          >
+            <LoaderCircle v-if="addingDrug" class="h-4 w-4 animate-spin" />
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Edit Drug Modal -->
+    <div
+      v-if="editDrugModalOpen"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4"
+    >
+      <div class="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+        <div class="mb-5 flex items-center justify-between">
+          <h3 class="text-xl font-semibold">Edit Drug</h3>
+          <button
+            class="rounded-lg p-2 hover:bg-[#F1F3F4]"
+            @click="closeEditDrugModal"
+          >
+            <X class="h-4 w-4" />
+          </button>
+        </div>
+
+        <div class="grid gap-4">
+          <div>
+            <label
+              class="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-[#5f6368]"
+              >Drug Name</label
+            >
+            <input
+              :value="editDrugForm.drugName"
+              disabled
+              class="w-full rounded-lg border border-[#DADCE0] bg-[#F8F9FA] px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label
+              class="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-[#5f6368]"
+              >Unit Price ($)</label
+            >
+            <input
+              v-model.number="editDrugForm.price"
+              type="number"
+              min="0.01"
+              step="0.01"
+              class="w-full rounded-lg border border-[#DADCE0] px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label
+              class="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-[#5f6368]"
+              >Stock Quantity</label
+            >
+            <input
+              v-model.number="editDrugForm.quantity"
+              type="number"
+              min="0"
+              class="w-full rounded-lg border border-[#DADCE0] px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label
+              class="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-[#5f6368]"
+              >Purpose (Optional)</label
+            >
+            <input
+              :value="editDrugForm.purpose"
+              @input="updateEditDrugField('purpose', $event.target.value)"
+              class="w-full rounded-lg border border-[#DADCE0] px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label
+              class="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-[#5f6368]"
+              >Recommended Dosage (Optional)</label
+            >
+            <input
+              :value="editDrugForm.dosage"
+              @input="updateEditDrugField('dosage', $event.target.value)"
+              class="w-full rounded-lg border border-[#DADCE0] px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label
+              class="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-[#5f6368]"
+              >Remarks (Optional)</label
+            >
+            <textarea
+              :value="editDrugForm.remarks"
+              @input="updateEditDrugField('remarks', $event.target.value)"
+              rows="3"
+              class="w-full rounded-lg border border-[#DADCE0] px-3 py-2 text-sm"
+            ></textarea>
+          </div>
+        </div>
+
+        <p
+          v-if="editDrugError"
+          class="mt-4 rounded-lg bg-[#FDECEC] p-3 text-sm text-[#B3261E]"
+        >
+          {{ editDrugError }}
+        </p>
+
+        <div class="mt-5 flex justify-end gap-3">
+          <button
+            class="rounded-lg border border-[#DADCE0] px-4 py-2 text-sm"
+            @click="closeEditDrugModal"
+          >
+            Cancel
+          </button>
+          <button
+            class="inline-flex items-center gap-2 rounded-lg bg-[#1a73e8] px-4 py-2 text-sm font-medium text-white hover:bg-[#1765cc] disabled:opacity-60"
+            :disabled="editingDrug"
+            @click="submitEditDrug"
+          >
+            <LoaderCircle v-if="editingDrug" class="h-4 w-4 animate-spin" />
+            Update
           </button>
         </div>
       </div>
