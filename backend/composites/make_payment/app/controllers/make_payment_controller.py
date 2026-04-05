@@ -1,8 +1,5 @@
-import hmac
-
 from flask import jsonify, request
 
-from app.config.settings import INTERNAL_API_KEY
 from app.services.make_payment_service import MakePaymentService
 from utils.exceptions import ValidationError
 
@@ -13,43 +10,24 @@ def _success(data: dict, status: int = 200):
     return jsonify({"success": True, "data": data, "error": None}), status
 
 
-def _require_internal_api_key():
-    """Return a 401 response if the X-Internal-Api-Key header is missing or wrong."""
-    provided = request.headers.get("X-Internal-Api-Key", "")
-    if not hmac.compare_digest(provided, INTERNAL_API_KEY):
-        return jsonify({"success": False, "data": None, "error": "Unauthorized", "errorCode": "UNAUTHORIZED"}), 401
-    return None
-
-
 def initiate_payment():
     body = request.get_json(silent=True) or {}
-    invoice_id = body.get("invoiceId")
-    if not invoice_id:
-        raise ValidationError("invoiceId is required")
+    nric = str(body.get("nric") or "").strip()
+    amount = body.get("amount")
+    record_id = body.get("recordId")
+    payment_method = str(body.get("paymentMethod") or "pm_card_visa").strip()
 
-    currency = body.get("currency")
-    description = body.get("description")
-    result = service.initiate_payment(invoice_id=invoice_id, currency=currency, description=description)
-    return _success(result, 201)
+    if not nric:
+        raise ValidationError("nric is required")
+    if amount is None:
+        raise ValidationError("amount is required")
+    if record_id is None:
+        raise ValidationError("recordId is required")
 
-
-def retry_payment():
-    body = request.get_json(silent=True) or {}
-    invoice_id = body.get("invoiceId")
-    if not invoice_id:
-        raise ValidationError("invoiceId is required")
-
-    currency = body.get("currency")
-    description = body.get("description")
-    result = service.retry_payment(invoice_id=invoice_id, currency=currency, description=description)
-    return _success(result, 201)
-
-
-def handle_payment_event():
-    auth_error = _require_internal_api_key()
-    if auth_error:
-        return auth_error
-
-    body = request.get_json(silent=True) or {}
-    result = service.handle_payment_event(body)
+    result = service.process_payment(
+        nric=nric,
+        amount=amount,
+        record_id=int(record_id),
+        payment_method=payment_method,
+    )
     return _success(result, 200)

@@ -1,33 +1,22 @@
 from decimal import Decimal, InvalidOperation
 
-from app.config import settings
 from app.clients.base import http_request
+from app.config import settings
 from utils.exceptions import ValidationError
 
 
-def create_payment_attempt(
-    invoice_id: int,
-    record_id: int,
-    amount: str | float | Decimal,
-    currency: str,
-    description: str | None = None,
-) -> dict:
+def process_payment(amount: str | float | Decimal, payment_method: str) -> dict:
     normalized_amount = _as_decimal_string(amount)
+    method = str(payment_method or "").strip()
+    if not method:
+        raise ValidationError("paymentMethod is required")
+
     body = {
-        "invoiceId": invoice_id,
-        "recordId": record_id,
         "amount": normalized_amount,
-        "currency": currency,
+        "paymentMethod": method,
     }
-    if description:
-        body["description"] = description
-    url = f"{settings.PAYMENT_SERVICE_URL}/payments/intents"
+    url = f"{settings.PAYMENT_SERVICE_URL}/payments/process"
     return http_request("POST", url, json_body=body)
-
-
-def cancel_payment(payment_id: int) -> dict:
-    url = f"{settings.PAYMENT_SERVICE_URL}/payments/{payment_id}/cancel"
-    return http_request("POST", url)
 
 
 def _as_decimal_string(raw_amount: str | float | Decimal) -> str:
