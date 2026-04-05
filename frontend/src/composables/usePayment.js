@@ -144,9 +144,9 @@ export function usePayment() {
         )
       }
 
-      // Step 4: Poll to confirm invoice is marked paid
+      // Step 4: Poll to confirm invoice is marked paid (longer timeout for K8s)
       paymentStatusMessage.value = 'Verifying invoice status...'
-      const finalStatus = await pollInvoiceStatus(invoiceId, 10, 1500)
+      const finalStatus = await pollInvoiceStatus(invoiceId, 20, 2000)
 
       if (finalStatus === 'paid') {
         paymentVerifiedMessage.value = 'Payment confirmed. Invoice marked as paid.'
@@ -168,7 +168,27 @@ export function usePayment() {
       const httpStatus = error?.response?.status
 
       if (httpStatus === 409 && serverError.includes('payment_pending')) {
-        paymentError.value = 'This invoice is already being processed. Please wait for it to complete or check the billing table.'
+        // Invoice is being processed — poll for result instead of giving up
+        paymentStatusMessage.value = 'Payment is being processed. Waiting for confirmation...'
+        confirmingPayment.value = true
+        const invoiceId = selectedInvoice.value?.invoiceId
+        if (invoiceId) {
+          const pollResult = await pollInvoiceStatus(invoiceId, 20, 2000)
+          if (pollResult === 'paid') {
+            paymentVerifiedMessage.value = 'Payment confirmed. Invoice marked as paid.'
+            paymentConsoleLogs.value.unshift(
+              `${new Date().toLocaleTimeString()} | invoice=${invoiceId} | status=paid`,
+            )
+            paymentStep.value = 3
+            paymentStatusMessage.value = ''
+            confirmingPayment.value = false
+            return
+          }
+        }
+        paymentError.value = 'Payment is still processing. Check the billing table for the latest status.'
+        paymentStatusMessage.value = ''
+        confirmingPayment.value = false
+        return
       } else if (httpStatus === 409) {
         paymentError.value = `This invoice cannot be paid right now: ${serverError}`
       } else {

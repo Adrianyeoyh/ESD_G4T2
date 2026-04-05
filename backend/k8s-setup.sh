@@ -75,16 +75,18 @@ kubectl rollout status deployment/rabbitmq -n $NAMESPACE --timeout=180s
 # -------------------------------------------------------
 echo ""
 echo "=== Step 4: Deploying atomic services ==="
-kubectl apply -f k8s/drug-service.yml
+kubectl apply -f k8s/drug-catalogue-service.yml
 kubectl apply -f k8s/invoice-service.yml
 kubectl apply -f k8s/prescription-service.yml
 kubectl apply -f k8s/payment-service.yml
+kubectl apply -f k8s/notification-service.yml
 
 echo "  Waiting for services to be ready..."
-kubectl rollout status deployment/drug-service -n $NAMESPACE --timeout=120s
+kubectl rollout status deployment/drug-catalogue-service -n $NAMESPACE --timeout=120s
 kubectl rollout status deployment/invoice-service -n $NAMESPACE --timeout=120s
 kubectl rollout status deployment/prescription-service -n $NAMESPACE --timeout=120s
 kubectl rollout status deployment/payment-service -n $NAMESPACE --timeout=120s
+kubectl rollout status deployment/notification-service -n $NAMESPACE --timeout=120s
 
 # -------------------------------------------------------
 # Step 5: Deploy composite services
