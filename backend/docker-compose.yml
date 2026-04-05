@@ -128,9 +128,9 @@ services:
       context: .
       dockerfile: services/invoice_service/Dockerfile
     env_file:
-      - ./services/invoice_service/.env
+      - .env.docker
     environment:
-      APP_ENV: docker
+      DB_SCHEMA: invoice_schema
     depends_on:
       postgres:
         condition: service_healthy
@@ -143,9 +143,9 @@ services:
       context: .
       dockerfile: services/drug_catalogue_service/Dockerfile
     env_file:
-      - ./services/drug_catalogue_service/.env
+      - .env.docker
     environment:
-      APP_ENV: docker
+      DB_SCHEMA: drug_schema
     depends_on:
       postgres:
         condition: service_healthy
@@ -158,9 +158,9 @@ services:
       context: .
       dockerfile: services/prescription_service/Dockerfile
     env_file:
-      - ./services/prescription_service/.env
+      - .env.docker
     environment:
-      APP_ENV: docker
+      DB_SCHEMA: prescription_schema
     depends_on:
       postgres:
         condition: service_healthy
@@ -173,10 +173,11 @@ services:
       context: .
       dockerfile: services/payment_service/Dockerfile
     env_file:
-      - ./services/payment_service/.env
+      - .env.docker
     environment:
-      APP_ENV: docker
-      MAKE_PAYMENT_SERVICE_URL: http://make_payment_service:5008
+      DB_SCHEMA: payment_schema
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -189,10 +190,11 @@ services:
       context: .
       dockerfile: services/notification_service/Dockerfile
     env_file:
-      - ./services/notification_service/.env
+      - .env.docker
     environment:
-      APP_ENV: docker
-      RABBITMQ_HOST: rabbitmq
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_PHONE_NUMBER: ${TWILIO_PHONE_NUMBER:-}
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5671/health')\""]
       interval: 15s
@@ -214,11 +216,13 @@ services:
       context: .
       dockerfile: composites/prescribe_medicine/Dockerfile
     env_file:
-      - ./composites/prescribe_medicine/.env
+      - .env.docker
     environment:
-      APP_ENV: docker
+      HTTP_TIMEOUT_SECONDS: 8
+      CLINICAL_RECORD_VALIDATE_PATH: /record/{recordId}
+      CLINICAL_RECORDS_REQUIRED: "false"
     depends_on:
-      - drug_service
+      - drug_catalogue_service
       - invoice_service
       - prescription_service
     restart: unless-stopped
@@ -230,19 +234,10 @@ services:
       context: .
       dockerfile: composites/make_payment/Dockerfile
     env_file:
-      - ./composites/make_payment/.env
+      - .env.docker
     environment:
-      APP_ENV: docker
-      INVOICE_SERVICE_URL: http://invoice_service:5003
-      PAYMENT_SERVICE_URL: http://payment_service:5004
-      RECORDS_SERVICE_URL: https://personal-iipxahjd.outsystemscloud.com/ClinicalRecordServices/rest/RecordsAPI
-      PATIENT_SERVICE_URL: https://personal-wv4mxqur.outsystemscloud.com/PatientService/rest/PatientAPI
-      INTERNAL_API_KEY: changeme-dev-key
-      RABBITMQ_HOST: rabbitmq
-      RABBITMQ_PORT: 5672
-      RABBITMQ_USER: guest
-      RABBITMQ_PASS: guest
-      RABBITMQ_QUEUE: notification.payment.success
+      HTTP_TIMEOUT_SECONDS: 8
+      DEFAULT_CURRENCY: sgd
     depends_on:
       invoice_service:
         condition: service_started
@@ -289,4 +284,3 @@ services:
       - prometheus
     networks:
       - esd-net
-
