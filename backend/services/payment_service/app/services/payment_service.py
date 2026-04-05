@@ -1,11 +1,9 @@
 import logging
 from datetime import datetime, timezone
 from decimal import Decimal
-import requests
 from sqlalchemy.orm import Session
 from app.repositories.payment_repository import PaymentRepository
 from app.services import stripe_service
-from app.config.settings import INVOICE_SERVICE_URL
 from utils.exceptions import NotFoundError, ConflictError, AppError
 from common.tools import PaymentStatus
 
@@ -17,34 +15,14 @@ class PaymentService:
         self.db = db
         self.repo = PaymentRepository(db)
 
-    def _fetch_invoice(self, invoice_id: int) -> dict:
-        url = f"{INVOICE_SERVICE_URL}/invoice/{invoice_id}"
-        try:
-            response = requests.get(url, timeout=5)
-        except requests.RequestException as exc:
-            raise AppError(f"Invoice service unavailable: {exc}")
-
-        if response.status_code == 404:
-            raise NotFoundError(f"Invoice {invoice_id} not found")
-        if response.status_code >= 500:
-            raise AppError(f"Invoice service error {response.status_code}")
-
-        response.raise_for_status()
-        return response.json()
-
     def create_payment_attempt(
         self,
         invoice_id: int,
         record_id: int,
-        amount: Decimal | None = None,
-        currency: str | None = None,
+        amount: Decimal,
+        currency: str,
         description: str | None = None,
     ):
-        invoice_payload = self._fetch_invoice(invoice_id)
-
-        invoice_amount = Decimal(invoice_payload.get("total"))
-        invoice_currency = invoice_payload.get("currency") or currency or "sgd"
-
         attempt_number = self.repo.get_next_attempt_number_for_update(invoice_id)
 
         if description is None:
@@ -52,8 +30,8 @@ class PaymentService:
 
         try:
             intent = stripe_service.create_payment_intent(
-                amount=invoice_amount,
-                currency=invoice_currency,
+                amount=amount,
+                currency=currency,
                 description=description,
                 metadata={
                     "invoice_id": str(invoice_id),
@@ -69,8 +47,8 @@ class PaymentService:
             payment_intent_id=intent.id,
             client_secret=intent.client_secret,
             attempt_number=attempt_number,
-            amount=invoice_amount,
-            currency=invoice_currency,
+            amount=amount,
+            currency=currency,
             provider="stripe",
         )
 

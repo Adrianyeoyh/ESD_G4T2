@@ -1,7 +1,6 @@
 import logging
 
 from fastapi import APIRouter, Depends, Request, status, HTTPException
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 import stripe
 
@@ -14,15 +13,6 @@ from app.services.webhook_handler import process_webhook_event
 
 router = APIRouter(prefix="/payments", tags=["Payments"])
 health_router = APIRouter(tags=["Health"])
-legacy_router = APIRouter(tags=["Payments Legacy"])
-
-
-class MakePaymentRequest(BaseModel):
-    invoice_id: int
-    record_id: int | None = None
-    amount: float | None = None
-    currency: str | None = None
-    description: str | None = None
 
 
 # ── Service dependency ──────────────────────────────────────────────────────
@@ -58,31 +48,6 @@ def create_payment_intent(
         )
     except Exception as exc:
         logger.exception("Payment intent creation failed")
-        raise HTTPException(status_code=503, detail="Payment intent failed")
-
-
-@legacy_router.post("/make_payment", response_model=PaymentResponse, status_code=status.HTTP_201_CREATED)
-def create_payment_intent_legacy(
-    body: MakePaymentRequest,
-    svc: PaymentService = Depends(get_payment_service),
-):
-    """Compatibility endpoint used by frontend: POST /make_payment."""
-    try:
-        payment = svc.create_payment_attempt(
-            invoice_id=body.invoice_id,
-            record_id=body.record_id or body.invoice_id,
-            amount=body.amount,
-            currency=body.currency,
-            description=body.description,
-        )
-        return PaymentResponse.model_validate(payment)
-    except stripe.error.StripeError as exc:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Stripe unavailable: {exc.user_message or str(exc)}",
-        )
-    except Exception as exc:
-        logger.exception("Legacy make_payment intent creation failed")
         raise HTTPException(status_code=503, detail="Payment intent failed")
 
 

@@ -20,10 +20,6 @@ DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NA
 
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
-INVOICE_SERVICE_URL = os.getenv("INVOICE_SERVICE_URL", "http://localhost:5003")
-MAKE_PAYMENT_SERVICE_URL = os.getenv(
-    "MAKE_PAYMENT_SERVICE_URL",
-    os.getenv("make_payment_SERVICE_URL", "http://localhost:5008"),
-)
+MAKE_PAYMENT_SERVICE_URL = os.getenv("MAKE_PAYMENT_SERVICE_URL", "http://localhost:5008")
 
 INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "changeme-dev-key")
