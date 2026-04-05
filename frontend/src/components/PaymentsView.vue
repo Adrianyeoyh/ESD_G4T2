@@ -286,9 +286,14 @@ const paginatedBilling = computed(() => {
       <p v-if="paymentVerifiedMessage" class="mt-3 rounded-lg bg-[#E6F4EA] p-3 text-sm font-medium text-[#188038]">
         {{ paymentVerifiedMessage }}
       </p>
-      <button class="mt-5 rounded-lg bg-[#1a73e8] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#1765cc]">
-        Download Receipt (Placeholder)
-      </button>
+      <div class="mt-5 flex gap-3">
+        <button
+          class="rounded-lg bg-[#1a73e8] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#1765cc]"
+          @click="resetPaymentFlow"
+        >
+          Back to Invoices
+        </button>
+      </div>
     </div>
 
     <div class="rounded-2xl border border-[#E8EAED] bg-white p-4">

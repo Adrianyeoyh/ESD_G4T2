@@ -80,8 +80,8 @@ const handleFetch = () => {
               <tr v-for="row in paginatedRecords" :key="row.recordId" class="align-top hover:bg-[#F8F9FA]">
                 <td class="px-4 py-3">{{ row.recordId }}</td>
                 <td class="px-4 py-3">{{ row.date ?? row.Date ?? row.visitDate ?? 'N/A' }}</td>
-                <td class="max-w-[250px] px-4 py-3">
-                  <p class="truncate" :title="row.VisitNotes ?? row.visitNotes ?? row.notes ?? ''">
+                <td class="max-w-[350px] px-4 py-3">
+                  <p class="whitespace-pre-wrap break-words text-sm">
                     {{ row.VisitNotes ?? row.visitNotes ?? row.notes ?? 'N/A' }}
                   </p>
                 </td>

@@ -12,9 +12,6 @@ const emit = defineEmits(['refresh'])
   <header class="mb-8 flex items-center justify-between">
     <div>
       <h2 class="text-3xl font-semibold tracking-tight">{{ title }}</h2>
-      <p class="mt-1 text-sm text-[#5f6368]">
-        Google Stitch-inspired layout with spacing-first clinical clarity.
-      </p>
     </div>
 
     <div class="flex items-center gap-3">
