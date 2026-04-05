@@ -257,13 +257,13 @@ services:
     container_name: esd-prometheus
     ports:
       - "9090:9090"
-  volumes:
-    - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
-    - ./prometheus-alerts.yml:/etc/prometheus/alerts.yml:ro
-  depends_on:
-    - kong
-  networks:
-    - esd-net
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus-alerts.yml:/etc/prometheus/alerts.yml:ro
+    depends_on:
+      - kong
+    networks:
+      - esd-net
 
   #######################################
   # Grafana
