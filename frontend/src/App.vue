@@ -1,5 +1,5 @@
 ﻿<script setup>
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import axios from 'axios'
 import { loadStripe } from '@stripe/stripe-js'
 import { useRoute, useRouter } from 'vue-router'
@@ -32,7 +32,7 @@ const ENDPOINTS = {
   recordsByPatient:
     'https://personal-iipxahjd.outsystemscloud.com/ClinicalRecordServices/rest/RecordsAPI/record/',
   prescriptionByPatientBase:
-    import.meta.env.VITE_PRESCRIPTION_BY_PATIENT_BASE || 'http://localhost:5006',
+    import.meta.env.VITE_PRESCRIPTION_BY_PATIENT_BASE || 'http://localhost:5005',
   consultationBase:
     import.meta.env.VITE_CONSULTATION_BASE ||
     'https://personal-wv4mxqur.outsystemscloud.com/RecordVisitNotes/rest/ConsultationAPI',
@@ -78,6 +78,8 @@ const inventorySortOrder = ref('asc') // 'asc' | 'desc'
 const deletingDrugId = ref(null)
 const deletingDrugError = ref('')
 const expandedDrugIds = ref([])
+const deleteDrugConfirmOpen = ref(false)
+const deleteDrugTarget = ref(null)
 
 // Add drug modal state
 const addDrugModalOpen = ref(false)
@@ -123,7 +125,7 @@ const showToast = (message, type = 'success') => {
 }
 
 // Helper functions for drug data
-const getDrugId = (drug) => Number(drug?.drugId ?? drug?.drug_id ?? drug?.id ?? 0)
+const getDrugId = (drug) => Number(drug?.drugId ?? drug?.drug_id ?? drug?.Id ?? drug?.id ?? 0)
 
 const normalizeDrug = (drug) => {
   const normalizedId = getDrugId(drug)
@@ -374,6 +376,20 @@ const buildConsultationDraft = () => {
   }
 }
 
+const resetConsultationState = () => {
+  consultationForm.value = {
+    patientId: '',
+    visitNotes: '',
+  }
+  consultationDrugSearch.value = ''
+  consultationDrugSelections.value = {}
+  consultationError.value = ''
+  consultationSuccess.value = ''
+  consultationNewRecord.value = null
+  consultationRecordId.value = null
+  consultationHistory.value = []
+}
+
 const dispensingRecordId = ref(null)
 const dispenseError = ref('')
 const dispenseSuccess = ref('')
@@ -386,7 +402,7 @@ const billingSuccess = ref('')
 
 const navItems = [
   { key: 'inventory', label: 'Inventory', icon: Pill },
-  { key: 'records', label: 'Records', icon: FileText },
+  { key: 'records', label: 'Consultation', icon: FileText },
   { key: 'history', label: 'Patient History', icon: FileText },
   { key: 'patients', label: 'All Patients', icon: Users },
   { key: 'payments', label: 'Payments', icon: CreditCard },
@@ -503,25 +519,10 @@ const normalizePrescriptionRows = (rows) =>
     raw: row,
   }))
 
-const fetchPrescriptionsByPatientId = async (patientId) => {
+const fetchPrescriptionsByRecordId = async (recordId) => {
   const base = ENDPOINTS.prescriptionByPatientBase.replace(/\/$/, '')
-  const candidates = [
-    `${base}/prescription/patient/${patientId}`,
-    `${base}/prescriptions/patient/${patientId}`,
-    `${base}/prescription/${patientId}`,
-  ]
-
-  let lastError = null
-  for (const url of candidates) {
-    try {
-      const response = await axios.get(url)
-      return normalizeObjectArrayResponse(response.data)
-    } catch (error) {
-      lastError = error
-    }
-  }
-
-  throw lastError || new Error('Unable to retrieve prescriptions for this patient.')
+  const response = await axios.get(`${base}/prescription/record/${recordId}`)
+  return normalizeObjectArrayResponse(response.data)
 }
 
 const fetchPatientHistory = async () => {
@@ -540,28 +541,40 @@ const fetchPatientHistory = async () => {
   beginOutsystemsSync()
 
   try {
-    const [recordsResult, prescriptionResult] = await Promise.allSettled([
-      axios.get(`${ENDPOINTS.recordsByPatient}${encodeURIComponent(String(patientId))}`),
-      fetchPrescriptionsByPatientId(patientId),
-    ])
+    const recordsResponse = await axios.get(`${ENDPOINTS.recordsByPatient}${encodeURIComponent(String(patientId))}`)
+    patientHistoryRecords.value = normalizeObjectArrayResponse(recordsResponse.data)
 
-    if (recordsResult.status === 'fulfilled') {
-      patientHistoryRecords.value = normalizeObjectArrayResponse(recordsResult.value.data)
-    } else {
-      patientHistoryError.value = parseErrorMessage(
-        recordsResult.reason,
-        'Unable to fetch clinical records for this patient.',
-      )
+    if (!patientHistoryRecords.value.length) {
+      patientHistoryPrescriptionError.value = ''
+      return
     }
 
-    if (prescriptionResult.status === 'fulfilled') {
-      patientHistoryPrescriptions.value = normalizePrescriptionRows(prescriptionResult.value)
-    } else {
-      patientHistoryPrescriptionError.value = parseErrorMessage(
-        prescriptionResult.reason,
-        'Unable to fetch prescriptions for this patient.',
-      )
+    const recordIds = patientHistoryRecords.value
+      .map((record) => Number(record.Id ?? record.id ?? record.recordId ?? record.RecordId))
+      .filter((recordId) => Number.isFinite(recordId) && recordId > 0)
+
+    const prescriptionResults = await Promise.allSettled(
+      recordIds.map((recordId) => fetchPrescriptionsByRecordId(recordId)),
+    )
+
+    const flattenedPrescriptions = []
+    for (const result of prescriptionResults) {
+      if (result.status === 'fulfilled') {
+        flattenedPrescriptions.push(...result.value)
+        continue
+      }
+
+      const statusCode = result.reason?.response?.status
+      if (statusCode !== 404) {
+        patientHistoryPrescriptionError.value = parseErrorMessage(
+          result.reason,
+          'Unable to fetch prescriptions for this patient.',
+        )
+        break
+      }
     }
+
+    patientHistoryPrescriptions.value = normalizePrescriptionRows(flattenedPrescriptions)
   } finally {
     loadingPatientHistory.value = false
     endOutsystemsSync()
@@ -733,13 +746,16 @@ const submitEditDrug = async () => {
 
   editingDrug.value = true
   try {
+    const drugName = String(editDrugForm.value.drugName || '').trim()
+    if (!drugName) {
+      editDrugError.value = 'Drug Name is required.'
+      return
+    }
+
     await axios.put(`${ENDPOINTS.drugsPrimary}/${drugId}`, {
+      drugName,
       quantity,
       price,
-      purpose,
-      dosage,
-      remarks,
-      recommendedDosage: dosage,
     })
     await fetchDrugs()
     closeEditDrugModal()
@@ -755,13 +771,34 @@ const submitEditDrug = async () => {
   }
 }
 
-// Delete Drug Function
-const deleteDrug = async (drug) => {
+const openDeleteDrugConfirm = (drug) => {
   const drugId = getDrugId(drug)
   const drugName = drug?.name ?? drug?.drugName ?? 'this drug'
   deletingDrugError.value = ''
 
-  if (!window.confirm(`Delete ${drugName} from inventory?`)) {
+  if (!Number.isFinite(drugId) || drugId <= 0) {
+    deletingDrugError.value = 'Invalid drugId selected for deletion.'
+    return
+  }
+
+  deleteDrugTarget.value = { drugId, drugName }
+  deleteDrugConfirmOpen.value = true
+}
+
+const closeDeleteDrugConfirm = () => {
+  deleteDrugConfirmOpen.value = false
+  deleteDrugTarget.value = null
+}
+
+// Delete Drug Function
+const deleteDrug = async () => {
+  const drugId = Number(deleteDrugTarget.value?.drugId)
+  const drugName = String(deleteDrugTarget.value?.drugName || 'this drug')
+  deletingDrugError.value = ''
+
+  if (!Number.isFinite(drugId) || drugId <= 0) {
+    deletingDrugError.value = 'Invalid drugId selected for deletion.'
+    closeDeleteDrugConfirm()
     return
   }
 
@@ -770,7 +807,8 @@ const deleteDrug = async (drug) => {
     await axios.delete(`${ENDPOINTS.drugsPrimary}/${drugId}`)
     expandedDrugIds.value = expandedDrugIds.value.filter((id) => id !== drugId)
     await fetchDrugs()
-    showToast('Drug removed from inventory.', 'success')
+    showToast(`Drug ${drugName} removed from inventory.`, 'success')
+    closeDeleteDrugConfirm()
   } catch (error) {
     deletingDrugError.value =
       error?.response?.data?.error ||
@@ -1227,6 +1265,25 @@ const refreshAll = async () => {
   await loadBillingRows()
 }
 
+watch(activeView, (newView, oldView) => {
+  if (oldView === 'records' && newView !== 'records') {
+    sessionStorage.removeItem(CONSULTATION_DRAFT_KEY)
+    resetConsultationState()
+  }
+})
+
+watch(
+  () => route.name,
+  (newName, oldName) => {
+    if (oldName === 'consultation-review' && newName !== 'consultation-review') {
+      const hasPendingDraft = Boolean(sessionStorage.getItem(CONSULTATION_DRAFT_KEY))
+      if (!hasPendingDraft) {
+        resetConsultationState()
+      }
+    }
+  },
+)
+
 onMounted(async () => {
   const query = new URLSearchParams(window.location.search)
   if (window.location.pathname === '/success') {
@@ -1437,7 +1494,7 @@ onMounted(async () => {
                         <button
                           class="inline-flex items-center gap-1 rounded-lg border border-[#F4C7C3] px-2.5 py-1.5 text-xs font-medium text-[#B3261E] hover:bg-[#FDECEC] disabled:opacity-60"
                           :disabled="deletingDrugId === drug.id"
-                          @click="deleteDrug(drug)"
+                          @click="openDeleteDrugConfirm(drug)"
                         >
                           <LoaderCircle v-if="deletingDrugId === drug.id" class="h-3.5 w-3.5 animate-spin" />
                           <Trash2 v-else class="h-3.5 w-3.5" />
@@ -1982,6 +2039,37 @@ onMounted(async () => {
             @click="selectedPatientDetails = null"
           >
             Close
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Delete Drug Confirm Modal -->
+    <div v-if="deleteDrugConfirmOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4">
+      <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+        <div class="mb-4 flex items-center justify-between">
+          <h3 class="text-xl font-semibold text-[#202124]">Confirm Deletion</h3>
+          <button class="rounded-lg p-2 hover:bg-[#F1F3F4]" @click="closeDeleteDrugConfirm">
+            <X class="h-4 w-4" />
+          </button>
+        </div>
+
+        <p class="text-sm text-[#5f6368]">
+          Are you sure you want to delete
+          <span class="font-semibold text-[#202124]">{{ deleteDrugTarget?.drugName || 'this drug' }}</span>
+          from inventory?
+        </p>
+        <p class="mt-2 text-xs text-[#B3261E]">This action cannot be undone.</p>
+
+        <div class="mt-6 flex justify-end gap-3">
+          <button class="rounded-lg border border-[#DADCE0] px-4 py-2 text-sm" @click="closeDeleteDrugConfirm">Cancel</button>
+          <button
+            class="inline-flex items-center gap-2 rounded-lg bg-[#B3261E] px-4 py-2 text-sm font-medium text-white hover:bg-[#8e1f16] disabled:opacity-60"
+            :disabled="deletingDrugId !== null"
+            @click="deleteDrug"
+          >
+            <LoaderCircle v-if="deletingDrugId !== null" class="h-4 w-4 animate-spin" />
+            Delete Drug
           </button>
         </div>
       </div>
