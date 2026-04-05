@@ -7,8 +7,7 @@ from app.clients.base import OrchestrationError
 
 
 def get_record(record_id: int) -> dict:
-    paths = [f"/Record/{record_id}", f"/record/{record_id}"]
-    response = _request_with_fallback("GET", paths)
+    response = _request_with_fallback("GET", [f"/record/id/{record_id}"])
     return _parse_json_response(response, "Failed to parse record response")
 
 
@@ -17,11 +16,11 @@ def close_record(record_id: int) -> int:
     if bool(record.get("isClosed")):
         return int(record.get("Id") or record.get("id") or record_id)
 
+    resolved_id = int(record.get("Id") or record.get("id") or record_id)
     payload = _build_close_record_payload(record, record_id)
 
-    # OutSystems POST /Record returns a raw integer response body.
-    response = _request_with_fallback("POST", ["/Record"], json_body=payload)
-    return _parse_int_text_response(response, "Invalid close-record response")
+    response = _request_with_fallback("PUT", [f"/record/{resolved_id}"], json_body=payload)
+    return _parse_json_or_int_response(response, resolved_id)
 
 
 def _request_with_fallback(method: str, paths: list[str], json_body: dict | None = None) -> requests.Response:
@@ -85,17 +84,19 @@ def _parse_json_response(response: requests.Response, error_message: str) -> dic
     return payload
 
 
-def _parse_int_text_response(response: requests.Response, error_message: str) -> int:
+def _parse_json_or_int_response(response: requests.Response, fallback_id: int) -> int:
     raw = (response.text or "").strip()
     try:
+        payload = response.json()
+        if isinstance(payload, dict):
+            return int(payload.get("Id") or payload.get("id") or fallback_id)
+        return int(payload)
+    except (ValueError, TypeError):
+        pass
+    try:
         return int(raw)
-    except ValueError as exc:
-        raise OrchestrationError(
-            message=error_message,
-            error_code="RECORDS_API_BAD_RESPONSE",
-            status_code=502,
-            extra={"responseText": raw},
-        ) from exc
+    except ValueError:
+        return fallback_id
 
 
 def _build_close_record_payload(record: dict, record_id: int) -> dict:

@@ -33,7 +33,7 @@ spec:
             - name: CLINICAL_RECORDS_URL
               value: https://personal-iipxahjd.outsystemscloud.com/ClinicalRecordServices/rest/RecordsAPI
             - name: CLINICAL_RECORD_VALIDATE_PATH
-              value: /record/{recordId}
+              value: /record/id/{recordId}
             - name: CLINICAL_RECORDS_REQUIRED
               value: "false"
             - name: HTTP_TIMEOUT_SECONDS

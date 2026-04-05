@@ -219,7 +219,7 @@ services:
       - .env.docker
     environment:
       HTTP_TIMEOUT_SECONDS: 8
-      CLINICAL_RECORD_VALIDATE_PATH: /record/{recordId}
+      CLINICAL_RECORD_VALIDATE_PATH: /record/id/{recordId}
       CLINICAL_RECORDS_REQUIRED: "false"
     depends_on:
       - drug_catalogue_service
