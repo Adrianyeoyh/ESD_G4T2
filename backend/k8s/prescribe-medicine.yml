@@ -25,11 +25,17 @@ spec:
             - name: APP_ENV
               value: docker
             - name: DRUG_CATALOGUE_URL
-              value: http://drug-service:5001
+              value: http://drug-catalogue-service:5001
             - name: INVOICE_SERVICE_URL
               value: http://invoice-service:5003
             - name: PRESCRIPTION_SERVICE_URL
               value: http://prescription-service:5005
+            - name: CLINICAL_RECORDS_URL
+              value: https://personal-iipxahjd.outsystemscloud.com/ClinicalRecordServices/rest/RecordsAPI
+            - name: CLINICAL_RECORD_VALIDATE_PATH
+              value: /record/{recordId}
+            - name: CLINICAL_RECORDS_REQUIRED
+              value: "false"
             - name: HTTP_TIMEOUT_SECONDS
               value: "8"
           resources:
