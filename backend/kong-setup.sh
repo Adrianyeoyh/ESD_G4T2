@@ -57,9 +57,10 @@ setup_service() {
 # -------------------------------------------------------
 
 # Atomic services
-setup_service "drug-catalogue"     "drug_catalogue_service" 5001 "/drug"
-setup_service "invoice-service"    "invoice_service"        5003 "/invoice"
-setup_service "payment-service"    "payment_service"        5004 "/payments"
+setup_service "drug-catalogue"       "drug_catalogue_service" 5001 "/drug"
+setup_service "invoice-service"      "invoice_service"        5003 "/invoice"
+setup_service "payment-service"      "payment_service"        5004 "/payments"
+setup_service "prescription-service" "prescription_service"   5005 "/prescription"
 
 # Composite services
 setup_service "prescribe-medicine" "prescribe_medicine"     5007 "/prescribe"
