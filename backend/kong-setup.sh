@@ -67,6 +67,27 @@ setup_service "prescribe-medicine" "prescribe_medicine"     5007 "/prescribe"
 setup_service "make-payment"       "make_payment"           5008 "/make_payment"
 
 # -------------------------------------------------------
+# Enable CORS plugin globally
+# -------------------------------------------------------
+echo ""
+echo "=== Enabling CORS plugin ==="
+curl -s -X POST "$KONG_ADMIN/plugins" \
+  --data "name=cors" \
+  --data "config.origins[]=*" \
+  --data "config.methods[]=GET" \
+  --data "config.methods[]=POST" \
+  --data "config.methods[]=PUT" \
+  --data "config.methods[]=DELETE" \
+  --data "config.methods[]=OPTIONS" \
+  --data "config.headers[]=Content-Type" \
+  --data "config.headers[]=Authorization" \
+  --data "config.headers[]=X-Internal-Api-Key" \
+  --data "config.credentials=false" \
+  --data "config.preflight_continue=false" \
+  > /dev/null
+echo "  CORS plugin enabled globally"
+
+# -------------------------------------------------------
 # Enable Prometheus plugin globally
 # -------------------------------------------------------
 echo ""

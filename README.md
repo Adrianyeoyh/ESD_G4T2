@@ -13,6 +13,7 @@ A microservices-based backend system for managing clinical prescriptions, drug i
 - [Request Flows](#request-flows)
 - [Prerequisites](#prerequisites)
 - [Setup & Running](#setup--running)
+- [Frontend](#frontend)
 - [Kong API Gateway](#kong-api-gateway)
 - [Scaling Services](#scaling-services)
 - [Monitoring (Prometheus & Grafana)](#monitoring-prometheus--grafana)
@@ -74,6 +75,7 @@ The backend is composed of **atomic services** (single-responsibility CRUD) orch
 | **Atomic** | Single-responsibility CRUD microservices | Drug Catalogue, Prescription, Invoice, Payment |
 | **Composite** | Multi-step orchestrators with rollback | Prescribe Medicine, Make Payment |
 | **Async** | Event-driven consumer | Notification Service |
+| **External** | OutSystems REST APIs | Clinical Records, Patient, Consultation |
 | **Infrastructure** | Platform services | PostgreSQL, RabbitMQ, Kong |
 
 ---
@@ -89,6 +91,8 @@ The backend is composed of **atomic services** (single-responsibility CRUD) orch
 | **API Gateway** | Kong 3.9 (Postgres-backed with Admin API) |
 | **Payments** | Stripe API |
 | **Notifications** | Twilio SMS |
+| **Frontend** | Vue 3, Vite, Vue Router, Tailwind CSS, Axios |
+| **UI Components** | Lucide Vue Next (icons), Stripe.js (card element) |
 | **Containerization** | Docker, Docker Compose |
 
 ---
@@ -298,9 +302,19 @@ POSTGRES_USER=USER
 POSTGRES_PASSWORD=PASSWORD
 ```
 
-#### 2b. Service Environment Files
+#### 2b. Docker Environment (Recommended)
 
-Each service needs a `.env` file. Copy from examples and fill in values:
+All services share a single `.env.docker` file loaded by Docker Compose:
+
+```bash
+cp backend/.env.docker.example backend/.env.docker
+```
+
+Edit `backend/.env.docker` and fill in your Stripe and Twilio credentials. This file configures database, RabbitMQ, internal service URLs, external OutSystems URLs, and all secrets in one place.
+
+#### 2c. Per-Service Environment Files (Local Development)
+
+For running services locally outside Docker, each service needs its own `.env`:
 
 ```bash
 # Atomic services
@@ -325,7 +339,7 @@ cp backend/composites/make_payment/.env.example     backend/composites/make_paym
 
 > **Important:** When running via Docker Compose, use Docker service names as hostnames (e.g., `postgres`, `drug_service`). When running locally, use `localhost`.
 
-#### 2c. Stripe Keys
+#### 2d. Stripe Keys
 
 1. Go to [Stripe Dashboard > Test API Keys](https://dashboard.stripe.com/test/apikeys)
 2. Copy the **Secret key** (`sk_test_...`) into `payment_service/.env`
@@ -378,6 +392,18 @@ open http://localhost:3000
 open http://localhost:9090/alerts
 ```
 
+### 6. Start Frontend
+
+```bash
+cd frontend
+npm install
+cp .env.example .env
+# Edit .env with your VITE_STRIPE_PUBLISHABLE_KEY
+npm run dev
+```
+
+Open `http://localhost:5173` in your browser.
+
 ---
 
 ## Kong API Gateway
@@ -394,8 +420,10 @@ Kong runs in **Postgres-backed mode** with full Admin API and Manager GUI suppor
 
 | Path | Upstream Service | Port |
 |------|-----------------|------|
-| `/drug/**` | drug_service | 5001 |
+| `/drug/**` | drug_catalogue_service | 5001 |
+| `/invoice/**` | invoice_service | 5003 |
 | `/payments/**` | payment_service | 5004 |
+| `/prescription/**` | prescription_service | 5005 |
 | `/prescribe/**` | prescribe_medicine | 5007 |
 | `/make_payment/**` | make_payment | 5008 |
 
@@ -683,6 +711,154 @@ SELECT * FROM drug_schema.drug;
 
 ---
 
+## Frontend
+
+### Overview
+
+The frontend is a Vue 3 single-page application built with Vite and Tailwind CSS. It communicates with backend microservices through Kong API Gateway (port 8000) and directly with OutSystems REST APIs for clinical records and patient management.
+
+### Tech Stack
+
+| Technology | Purpose |
+|-----------|---------|
+| Vue 3 (Composition API) | Reactive UI framework |
+| Vite | Build tool and dev server |
+| Vue Router | Client-side routing |
+| Tailwind CSS | Utility-first styling |
+| Axios | HTTP client for API calls |
+| Lucide Vue Next | Icon library |
+| Stripe.js | Payment card element |
+
+### Architecture
+
+The frontend is organized into four layers:
+
+```
+frontend/src/
+├── api/              # API endpoint configuration and service functions
+│   ├── endpoints.js  # All API URLs (Kong + OutSystems)
+│   ├── drugs.js      # Drug catalogue CRUD
+│   ├── records.js    # Clinical records (OutSystems)
+│   ├── patients.js   # Patient management (OutSystems)
+│   ├── invoices.js   # Invoice service
+│   ├── payment.js    # Payment orchestration
+│   └── prescriptions.js  # Prescription lookups
+├── composables/      # Reactive state + business logic (Vue composables)
+│   ├── useInventory.js       # Drug inventory state and CRUD
+│   ├── useRecords.js         # Clinical records with patient enrichment
+│   ├── useConsultation.js    # Consultation form and drug selection
+│   ├── usePatients.js        # Patient list and registration
+│   ├── usePatientHistory.js  # Patient history with prescriptions
+│   ├── useInvoices.js        # Invoice data with record/patient joins
+│   ├── usePayment.js         # Stripe payment flow
+│   ├── useToast.js           # Toast notifications
+│   └── useOutsystemsSync.js  # Sync indicator for OutSystems calls
+├── components/       # UI components (views + modals)
+│   ├── AppSidebar.vue             # Navigation sidebar
+│   ├── AppHeader.vue              # Page header with refresh
+│   ├── ToastContainer.vue         # Toast notification overlay
+│   ├── InventoryView.vue          # Drug inventory table with CRUD
+│   ├── ConsultationView.vue       # Create consultation form
+│   ├── PastConsultationsView.vue  # Consultation records with filters
+│   ├── PatientHistoryView.vue     # Patient record + prescription lookup
+│   ├── PatientsView.vue           # All patients table
+│   ├── PaymentsView.vue           # Billing table + payment wizard
+│   ├── AddDrugModal.vue           # Add drug modal
+│   ├── EditDrugModal.vue          # Edit drug modal
+│   ├── DeleteDrugModal.vue        # Delete confirmation modal
+│   ├── PatientRegistrationModal.vue  # Register patient modal
+│   └── PatientDetailsModal.vue    # Patient details modal
+├── views/            # Full-screen pages (no sidebar layout)
+│   ├── ConsultationReview.vue  # Review + add medication + confirm
+│   ├── PaymentSuccess.vue      # Payment success page
+│   └── ...
+├── utils/            # Utility functions
+│   └── normalizers.js  # Data normalization for API responses
+└── router/
+    └── index.js      # Route definitions
+```
+
+### Routes
+
+| Path | Page | Description |
+|------|------|-------------|
+| `/` | Inventory | Drug inventory with add/edit/delete |
+| `/consultation` | Create Consultation | Enter patient ID and visit notes |
+| `/consultation/review` | Consultation Review | Add medication, review, and confirm submission |
+| `/past-consultations` | Past Consultations | All consultation records with open/closed filter |
+| `/patient-history` | Patient History | Lookup records and prescriptions by patient ID |
+| `/patients` | All Patients | Searchable patient list with details |
+| `/payments` | Payments | Billing table, invoice list, and Stripe payment wizard |
+| `/payment-success` | Payment Success | Payment confirmation page |
+
+### API Routing
+
+The frontend routes requests to two backends:
+
+| Destination | Services | Base URL |
+|-------------|----------|----------|
+| **Kong Gateway** | Drug Catalogue, Invoice, Payment, Prescription, Prescribe Medicine, Make Payment | `http://localhost:8000` (configurable via `VITE_KONG_BASE`) |
+| **OutSystems** | Clinical Records (RecordsAPI), Patient Management (PatientAPI), Consultation (ConsultationAPI) | Direct HTTPS to `outsystemscloud.com` |
+
+### Key Features
+
+- **Patient Verification** — Validates patient exists via OutSystems PatientAPI before submitting consultations
+- **Drug Catalogue on Review Page** — Add medication directly on the consultation review page before confirming
+- **Invoice-Based Payments** — Fetches invoices from the invoice service, initiates Stripe PaymentIntents, confirms with card element, and polls for backend confirmation
+- **Invoice Status Cross-Reference** — Records show as "Closed" when their linked invoice is paid, even if OutSystems hasn't updated
+- **Pagination** — All list views (past consultations, patients, patient history, billing) paginate at 10 items per page
+- **Status Filters** — Past consultations filter by Open/Closed, billing table filters by Paid/Draft/Pending/Failed
+- **Toast Notifications** — Success/error feedback for CRUD operations
+- **Syncing Indicator** — Shows when OutSystems API calls are in progress
+
+### Frontend Setup
+
+#### 1. Install Dependencies
+
+```bash
+cd frontend
+npm install
+```
+
+#### 2. Configure Environment
+
+```bash
+cp .env.example .env
+```
+
+Edit `frontend/.env`:
+
+```env
+VITE_KONG_BASE=http://localhost:8000
+VITE_STRIPE_PUBLISHABLE_KEY=pk_test_your_stripe_publishable_key
+```
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `VITE_KONG_BASE` | Kong API Gateway URL | `http://localhost:8000` |
+| `VITE_STRIPE_PUBLISHABLE_KEY` | Stripe publishable key for card element | (required) |
+| `VITE_CONSULTATION_BASE` | Override ConsultationAPI URL | OutSystems URL |
+| `VITE_PRESCRIPTION_BY_PATIENT_BASE` | Override Prescription service URL | Kong `/prescription` |
+| `VITE_PRESCRIBE_MEDICINE_BASE` | Override Prescribe Medicine URL | Kong `/prescribe` |
+
+#### 3. Start Development Server
+
+```bash
+npm run dev
+```
+
+The frontend runs at `http://localhost:5173`.
+
+#### 4. Build for Production
+
+```bash
+npm run build
+```
+
+Output is written to `frontend/dist/`.
+
+---
+
 ## Troubleshooting
 
 | Problem | Solution |
@@ -696,6 +872,12 @@ SELECT * FROM drug_schema.drug;
 | Port conflict on scale | Ensure `container_name` is not set for the service you're scaling |
 | Invoice enum error (`DRAFT`) | Run: `docker exec esd-postgres psql -U clinic -d esd_db -c "ALTER TYPE invoice_schema.invoice_status ADD VALUE IF NOT EXISTS 'DRAFT';"` |
 | RabbitMQ connection refused | Wait for RabbitMQ healthcheck; check `RABBITMQ_HOST` in `.env` |
+| CORS errors in browser | Run `./kong-setup.sh` to enable CORS plugin; ensure `X-Internal-Api-Key` is in allowed headers |
+| Frontend shows "Unknown patient" | Records from OutSystems lack patient names; the frontend joins patient data client-side — ensure patients are loaded |
+| Invoice stuck in `payment_pending` | Stripe webhook didn't fire (no `stripe listen` running); the frontend calls `/payment-events` directly as fallback |
+| Twilio SMS 401 error | Check `TWILIO_ACCOUNT_SID` and `TWILIO_AUTH_TOKEN` in `.env.docker`; verify at Twilio console |
+| `STRIPE_SECRET_KEY` empty in container | Remove `${STRIPE_SECRET_KEY:-}` overrides from `docker-compose.yml`; use `env_file` values from `.env.docker` |
+| Consultation 500 with empty body | Patient does not exist on OutSystems; frontend validates before submission |
 
 ### Useful Commands
 
@@ -771,5 +953,19 @@ ESD_G4T2/
 │   └── composites/
 │       ├── prescribe_medicine/     # Flask — prescription workflow orchestrator
 │       └── make_payment/           # Flask — payment workflow orchestrator
-└── frontend/                       # (In development)
+└── frontend/                       # Vue 3 + Vite SPA
+    ├── .env                        # Environment variables (gitignored)
+    ├── .env.example                # Template for environment setup
+    ├── vite.config.js              # Vite configuration
+    ├── index.html                  # Entry HTML
+    ├── package.json                # Dependencies
+    └── src/
+        ├── App.vue                 # Root layout (sidebar + router-view)
+        ├── main.js                 # Vue app entry point
+        ├── router/index.js         # Route definitions
+        ├── api/                    # API endpoint configs and service functions
+        ├── composables/            # Reactive state management (Vue composables)
+        ├── components/             # UI components (views + modals)
+        ├── views/                  # Full-screen pages
+        └── utils/                  # Data normalizers and helpers
 ```

@@ -176,8 +176,6 @@ services:
       - .env.docker
     environment:
       DB_SCHEMA: payment_schema
-      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
-      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -191,10 +189,6 @@ services:
       dockerfile: services/notification_service/Dockerfile
     env_file:
       - .env.docker
-    environment:
-      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
-      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
-      TWILIO_PHONE_NUMBER: ${TWILIO_PHONE_NUMBER:-}
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5671/health')\""]
       interval: 15s
