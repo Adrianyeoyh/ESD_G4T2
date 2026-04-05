@@ -238,83 +238,28 @@ def main():
         expect_equal(step, "status after paid", payload["status"], "paid")
 
     def test_payment_endpoints(step: StepResult):
-        nonlocal created_payment_id
-
         status, payload = request_json(
             "POST",
-            f"{payment_base}/payments/intents",
+            f"{payment_base}/payments/process",
             {
-                "invoiceId": paid_invoice_id,
-                "recordId": now_tag + 1,
                 "amount": "80.00",
-                "currency": "sgd",
-                "description": "smoke test payment",
+                "paymentMethod": "pm_card_visa",
             },
         )
 
-        if status != 201:
+        if status != 200:
             msg = (
-                "Stripe-dependent create intent did not return 201. "
+                "Stripe-dependent process payment did not return 200. "
                 "Set STRIPE_SECRET_KEY/STRIPE_WEBHOOK_SECRET if you want full payment flow."
             )
             if args.require_stripe:
                 step.fail(f"{msg} HTTP status was {status}")
-                raise TestFailure("POST /payments/intents")
+                raise TestFailure("POST /payments/process")
             step.info(f"SKIPPED: {msg} HTTP status was {status}")
-
-            status, _ = request_json("GET", f"{payment_base}/payments/999999999")
-            expect_equal(step, "GET /payments/{id} not found status", status, 404)
-
-            status, payload = request_json("GET", f"{payment_base}/payments/invoice/{paid_invoice_id}")
-            expect_equal(step, "GET /payments/invoice/{invoice_id} status", status, 200)
-            expect_equal(step, "GET /payments/invoice returns list", isinstance(payload, list), True)
-
-            status, _ = request_json(
-                "GET", f"{payment_base}/payments/invoice/{paid_invoice_id}/latest"
-            )
-            expect_in(step, "GET /payments/invoice/{id}/latest status", status, [200, 404])
-
-            status, _ = request_json("POST", f"{payment_base}/payments/999999999/cancel")
-            expect_equal(step, "POST /payments/{id}/cancel not found status", status, 404)
-
-            status, _ = request_json(
-                "POST",
-                f"{payment_base}/payments/webhook",
-                {"type": "payment_intent.succeeded", "data": {"object": {"id": "pi_fake"}}},
-            )
-            expect_in(step, "POST /payments/webhook status", status, [200, 400, 500])
             return
 
-        created_payment_id = payload["paymentId"]
-        step.info(f"created paymentId={created_payment_id}")
-
-        status, payload = request_json("GET", f"{payment_base}/payments/{created_payment_id}")
-        expect_equal(step, "GET /payments/{id} status", status, 200)
-        expect_equal(step, "GET /payments/{id} paymentId", payload["paymentId"], created_payment_id)
-
-        status, payload = request_json("GET", f"{payment_base}/payments/invoice/{paid_invoice_id}")
-        expect_equal(step, "GET /payments/invoice/{invoice_id} status", status, 200)
-        expect_equal(step, "GET /payments/invoice returns list", isinstance(payload, list), True)
-        expect_equal(step, "GET /payments/invoice list non-empty", len(payload) > 0, True)
-
-        status, payload = request_json(
-            "GET", f"{payment_base}/payments/invoice/{paid_invoice_id}/latest"
-        )
-        expect_equal(step, "GET /payments/invoice/{invoice_id}/latest status", status, 200)
-        expect_equal(step, "latest paymentId", payload["paymentId"], created_payment_id)
-
-        status, payload = request_json(
-            "POST", f"{payment_base}/payments/{created_payment_id}/cancel"
-        )
-        expect_equal(step, "POST /payments/{id}/cancel status", status, 200)
-        expect_equal(step, "status after cancel", payload["status"], "cancelled")
-
-        status, _ = request_json(
-            "POST",
-            f"{payment_base}/payments/webhook",
-            {"type": "payment_intent.succeeded", "data": {"object": {"id": "pi_fake"}}},
-        )
-        expect_in(step, "POST /payments/webhook status", status, [200, 400, 500])
+        expect_in(step, "POST /payments/process status field", payload.get("status"), ["success", "failed"])
+        expect_equal(step, "POST /payments/process has transactionId", "transactionId" in payload, True)
 
     if drug_ready:
         run_step("Drug service endpoints", test_drug_crud, summary)

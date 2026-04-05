@@ -425,6 +425,7 @@ const pendingInvoices = computed(() =>
         'Unknown patient'
       ).trim(),
       amount: Number(record.amount ?? record.total_amount ?? record.TotalAmount ?? 0),
+      nric: String(record.nric ?? record.NRIC ?? record.Nric ?? '').trim(),
       currency: String(record.currency ?? record.Currency ?? 'SGD').trim(),
       status: String(record.status ?? record.Status ?? 'PENDING').toUpperCase().trim(),
       diagnosis: String(record.diagnosis ?? record.Diagnosis ?? 'N/A').trim(),
@@ -1173,27 +1174,29 @@ const createPaymentIntent = async () => {
     throw new Error('Please select an invoice first.')
   }
 
-  const invoiceId = Number(String(selectedInvoice.value.invoiceId).trim())
-  if (!Number.isFinite(invoiceId)) {
-    throw new Error(`Invalid invoiceId from OutSystems record: ${selectedInvoice.value.invoiceId}`)
+  const recordId = Number(String(selectedInvoice.value.invoiceId).trim())
+  if (!Number.isFinite(recordId)) {
+    throw new Error(`Invalid recordId from selected record: ${selectedInvoice.value.invoiceId}`)
   }
+  const amount = Number(selectedInvoice.value.amount ?? 0)
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error('Amount must be greater than 0.')
+  }
+  const nric = String(selectedInvoice.value.nric || '').trim()
+  if (!nric) {
+    throw new Error('NRIC is required for composite payment orchestration.')
+  }
+  const paymentMethod = import.meta.env.VITE_DEFAULT_PAYMENT_METHOD || 'pm_card_visa'
 
   console.log('Sending request to:', ENDPOINTS.billing)
   const response = await axios.post(ENDPOINTS.billing, {
-    invoiceId,
+    nric,
+    amount: amount.toFixed(2),
+    recordId,
+    paymentMethod,
   })
   const payload = response.data?.data || response.data || {}
-
-  const resolvedClientSecret = payload?.clientSecret || payload?.client_secret || ''
-  const resolvedPaymentIntentId =
-    payload?.paymentIntentId || payload?.payment_intent_id || ''
-
-  if (!resolvedClientSecret) {
-    throw new Error('Billing did not return client_secret. Verify /make_payment response.')
-  }
-
-  clientSecret.value = resolvedClientSecret
-  paymentIntentId.value = resolvedPaymentIntentId
+  return payload
 }
 
 const handleConfirmAndPay = async () => {
@@ -1203,37 +1206,20 @@ const handleConfirmAndPay = async () => {
   confirmingPayment.value = true
 
   try {
-    await createPaymentIntent()
-
-    if (!stripe.value || !cardElement.value) {
-      stripeError.value = 'Stripe card component is not ready. Please retry.'
+    const compositeResult = await createPaymentIntent()
+    if (String(compositeResult?.paymentStatus).toLowerCase() !== 'success') {
+      paymentError.value = 'Payment failed. Invoice status was not updated.'
       return
     }
 
-    const { error, paymentIntent } = await stripe.value.confirmCardPayment(clientSecret.value, {
-      payment_method: {
-        card: cardElement.value,
-      },
-    })
-
-    if (error) {
-      stripeError.value = error.message || 'Stripe confirmation failed.'
-      return
-    }
-
-    if (paymentIntent?.status === 'succeeded') {
-      paymentVerifiedMessage.value = '✅ Payment Verified in Stripe Sandbox'
-      console.log('Stripe paymentIntent.id:', paymentIntent.id)
-      paymentConsoleLogs.value.unshift(
-        `${new Date().toLocaleTimeString()} | paymentIntent.id=${paymentIntent.id} | status=${paymentIntent.status}`,
-      )
-      window.location.assign(
-        `/payment-success?invoiceId=${encodeURIComponent(String(selectedInvoice.value?.invoiceId || ''))}&paymentIntentId=${encodeURIComponent(String(paymentIntent.id || paymentIntentId.value || ''))}`,
-      )
-      return
-    }
-
-    stripeError.value = `Stripe returned status: ${paymentIntent?.status || 'unknown'}`
+    paymentIntentId.value = compositeResult?.transactionId || ''
+    paymentVerifiedMessage.value = 'Payment successful and invoice marked as Paid.'
+    paymentConsoleLogs.value.unshift(
+      `${new Date().toLocaleTimeString()} | transactionId=${paymentIntentId.value} | status=success`,
+    )
+    window.location.assign(
+      `/payment-success?invoiceId=${encodeURIComponent(String(selectedInvoice.value?.invoiceId || ''))}&paymentIntentId=${encodeURIComponent(String(paymentIntentId.value || ''))}`,
+    )
   } catch (error) {
     if (error?.response?.status === 503) {
       alert('Backend Orchestrator is offline, but Stripe Library is successfully initialized.')

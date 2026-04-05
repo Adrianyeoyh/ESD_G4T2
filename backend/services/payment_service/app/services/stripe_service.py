@@ -10,6 +10,8 @@ def create_payment_intent(
     currency: str,
     description: str,
     metadata: dict | None = None,
+    payment_method: str | None = None,
+    confirm: bool = False,
 ) -> stripe.PaymentIntent:
     """Create a Stripe PaymentIntent.
 
@@ -23,12 +25,18 @@ def create_payment_intent(
         raise ValueError("Stripe API key is not configured")
 
     amount_cents = int((amount * 100).to_integral_value(rounding=ROUND_HALF_UP))
+    payload = {
+        "amount": amount_cents,
+        "currency": currency.lower(),
+        "description": description,
+        "payment_method_types": ["card"],
+        "metadata": metadata or {},
+        "confirm": confirm,
+    }
+    if payment_method:
+        payload["payment_method"] = payment_method
     return stripe.PaymentIntent.create(
-        amount=amount_cents,
-        currency=currency.lower(),
-        description=description,
-        payment_method_types=["card"],
-        metadata=metadata or {},
+        **payload,
     )
 
 
