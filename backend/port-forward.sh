@@ -1,0 +1,1 @@
+kubectl port-forward -n clinicflow svc/prometheus 9090:9090 & kubectl port-forward -n clinicflow svc/grafana 3000:3000 & kubectl port-forward -n clinicflow svc/rabbitmq 15672:15672 &
