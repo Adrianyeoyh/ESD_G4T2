@@ -16,7 +16,7 @@ export function useRecords() {
   const patientMap = computed(() => {
     const map = {}
     for (const p of patientsData.value) {
-      const id = String(p.patientId || '').trim()
+      const id = String(p.patientId || '').trim().toLowerCase()
       if (id) map[id] = p
     }
     return map
@@ -36,7 +36,7 @@ export function useRecords() {
   const normalizedRecords = computed(() =>
     records.value.map((record, idx) => {
       const base = normalizeRecord(record, idx)
-      const patient = patientMap.value[base.patientId]
+      const patient = patientMap.value[String(base.patientId || '').toLowerCase()]
       if (patient) {
         base.patientName = patient.name || base.patientName
         base.nric = base.patientId

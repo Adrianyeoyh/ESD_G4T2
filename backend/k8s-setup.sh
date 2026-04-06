@@ -114,10 +114,46 @@ kubectl rollout status deployment/kong -n $NAMESPACE --timeout=120s
 echo ""
 echo "=== Step 7: Deploying monitoring ==="
 kubectl apply -f k8s/prometheus.yml
+
+# Create Grafana dashboard ConfigMap from JSON file
+kubectl create configmap grafana-kong-dashboard \
+  --from-file=kong-overview.json=grafana/dashboards/kong-overview.json \
+  -n $NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
+
 kubectl apply -f k8s/grafana.yml
 
 kubectl rollout status deployment/prometheus -n $NAMESPACE --timeout=120s
 kubectl rollout status deployment/grafana -n $NAMESPACE --timeout=120s
+
+# -------------------------------------------------------
+# Step 8: Update K8s secrets from .env.docker
+# -------------------------------------------------------
+echo ""
+echo "=== Step 8: Updating secrets ==="
+if [ -f ".env.docker" ]; then
+  bash k8s/update-secrets.sh
+else
+  echo "  Skipped — .env.docker not found. Run ./k8s/update-secrets.sh manually."
+fi
+
+# -------------------------------------------------------
+# Step 9: Port-forward monitoring services
+# -------------------------------------------------------
+echo ""
+echo "=== Step 9: Port-forwarding monitoring ==="
+
+# Kill any existing port-forwards
+pkill -f "kubectl port-forward.*clinicflow" 2>/dev/null
+sleep 1
+
+kubectl port-forward -n $NAMESPACE svc/prometheus 9090:9090 &>/dev/null &
+kubectl port-forward -n $NAMESPACE svc/grafana 3000:3000 &>/dev/null &
+kubectl port-forward -n $NAMESPACE svc/rabbitmq 15672:15672 &>/dev/null &
+sleep 2
+
+echo "  Prometheus:  http://localhost:9090"
+echo "  Grafana:     http://localhost:3000"
+echo "  RabbitMQ UI: http://localhost:15672"
 
 # -------------------------------------------------------
 # Summary
@@ -130,15 +166,23 @@ echo ""
 echo "  Services:"
 kubectl get svc -n $NAMESPACE --no-headers | awk '{printf "    %-25s %s\n", $1, $5}'
 echo ""
-echo "  Access points:"
-echo "    Kong Proxy:   http://localhost:8000"
-echo "    Kong Admin:   http://localhost:8001"
-echo "    Prometheus:   http://localhost:9090"
-echo "    Grafana:      http://localhost:3000"
-echo "    RabbitMQ UI:  http://localhost:15672"
+echo "  Access points (all accessible from localhost):"
+echo "    Kong Proxy:   http://localhost:8000  (LoadBalancer)"
+echo "    Kong Admin:   http://localhost:8001  (LoadBalancer)"
+echo "    Kong Manager: http://localhost:8002  (LoadBalancer)"
+echo "    Prometheus:   http://localhost:9090  (port-forward)"
+echo "    Grafana:      http://localhost:3000  (port-forward)"
+echo ""
+echo "  Note: Kong ports are via LoadBalancer (persistent)."
+echo "  Prometheus & Grafana use port-forward (tied to this terminal)."
+echo "  If they stop, re-run:"
+echo "    kubectl port-forward -n $NAMESPACE svc/prometheus 9090:9090 &"
+echo "    kubectl port-forward -n $NAMESPACE svc/grafana 3000:3000 &"
+echo "    kubectl port-forward -n $NAMESPACE svc/rabbitmq 15672:15672 &"
 echo ""
 echo "  Useful commands:"
 echo "    kubectl get pods -n $NAMESPACE          # List pods"
 echo "    kubectl get hpa -n $NAMESPACE           # Auto-scaler status"
 echo "    kubectl logs -n $NAMESPACE -l app=<svc> # Service logs"
+echo "    ./k8s/update-secrets.sh                 # Update secrets from .env.docker"
 echo "    ./k8s-setup.sh teardown                 # Remove everything"

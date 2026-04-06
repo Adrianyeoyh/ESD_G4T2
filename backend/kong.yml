@@ -29,6 +29,13 @@ plugins:
 services:
   - name: drug-catalogue
     url: http://drug_catalogue_service:5001
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 100
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
     routes:
       - name: drug-catalogue-route
         paths:
@@ -37,6 +44,13 @@ services:
 
   - name: invoice-service
     url: http://invoice_service:5003
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 60
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
     routes:
       - name: invoice-route
         paths:
@@ -45,6 +59,13 @@ services:
 
   - name: payment-service
     url: http://payment_service:5004
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 30
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
     routes:
       - name: payment-route
         paths:
@@ -53,6 +74,13 @@ services:
 
   - name: prescription-service
     url: http://prescription_service:5005
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 60
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
     routes:
       - name: prescription-route
         paths:
@@ -61,6 +89,13 @@ services:
 
   - name: prescribe-medicine
     url: http://prescribe_medicine:5007
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 30
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
     routes:
       - name: prescribe-medicine-route
         paths:
@@ -69,6 +104,13 @@ services:
 
   - name: make-payment
     url: http://make_payment:5008
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 20
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
     routes:
       - name: make-payment-route
         paths:

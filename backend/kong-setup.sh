@@ -67,6 +67,32 @@ setup_service "prescribe-medicine" "prescribe_medicine"     5007 "/prescribe"
 setup_service "make-payment"       "make_payment"           5008 "/make_payment"
 
 # -------------------------------------------------------
+# Per-service rate limiting
+# -------------------------------------------------------
+echo ""
+echo "=== Enabling rate limiting ==="
+
+add_rate_limit() {
+  local service=$1
+  local limit=$2
+  curl -s -X POST "$KONG_ADMIN/services/${service}/plugins" \
+    --data "name=rate-limiting" \
+    --data "config.minute=${limit}" \
+    --data "config.policy=local" \
+    --data "config.fault_tolerant=true" \
+    --data "config.hide_client_headers=false" \
+    > /dev/null
+  echo "  ${service}: ${limit} req/min"
+}
+
+add_rate_limit "drug-catalogue"       100
+add_rate_limit "invoice-service"      60
+add_rate_limit "payment-service"      30
+add_rate_limit "prescription-service" 60
+add_rate_limit "prescribe-medicine"   30
+add_rate_limit "make-payment"         20
+
+# -------------------------------------------------------
 # Enable CORS plugin globally
 # -------------------------------------------------------
 echo ""
