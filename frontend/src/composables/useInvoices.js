@@ -23,7 +23,7 @@ export function useInvoices() {
   const patientMap = computed(() => {
     const map = {}
     for (const p of patientsData.value) {
-      const id = String(p.patientId || '').trim()
+      const id = String(p.patientId || '').trim().toLowerCase()
       if (id) map[id] = p
     }
     return map
@@ -34,7 +34,7 @@ export function useInvoices() {
       const recordId = inv.recordId ?? inv.record_id
       const record = recordMap.value[recordId]
       const patientId = record?.patientId || ''
-      const patient = patientMap.value[patientId]
+      const patient = patientMap.value[patientId.toLowerCase()]
       return {
         invoiceId: inv.invoiceId ?? inv.invoice_id,
         recordId,
